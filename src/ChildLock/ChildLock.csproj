@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>ChildLock</AssemblyName>
+    <RootNamespace>ChildLock</RootNamespace>
+    <ApplicationIcon Condition="Exists('Assets\childlock.ico')">Assets\childlock.ico</ApplicationIcon>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!--
+    Release builds run elevated so they can also block input aimed at admin windows (Task Manager etc.).
+    Debug builds run as the normal user so development and the integration test need no UAC prompt.
+    Override either way with -p:ChildLockElevate=true|false.
+  -->
+  <PropertyGroup>
+    <ChildLockElevate Condition="'$(ChildLockElevate)' == '' and '$(Configuration)' == 'Release'">true</ChildLockElevate>
+    <ChildLockElevate Condition="'$(ChildLockElevate)' == ''">false</ChildLockElevate>
+    <ApplicationManifest Condition="'$(ChildLockElevate)' == 'true'">app.manifest</ApplicationManifest>
+    <ApplicationManifest Condition="'$(ChildLockElevate)' != 'true'">app.asinvoker.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <!-- Release build: one small exe that uses the installed .NET 10 Desktop Runtime. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ChildLock.Core\ChildLock.Core.csproj" />
+  </ItemGroup>
+
+</Project>

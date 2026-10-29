@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Product>ChildLock</Product>
+    <Company>Pure Tech</Company>
+    <Authors>Pure Tech</Authors>
+    <Copyright>Copyright (c) 2026 Pure Tech</Copyright>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+</Project>

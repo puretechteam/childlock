@@ -1,0 +1,26 @@
+# Build output
+bin/
+obj/
+out/
+publish/
+artifacts/
+TestResults/
+
+# IDE / OS
+.vs/
+.idea/
+*.user
+*.suo
+.DS_Store
+Thumbs.db
+
+# Logs and caches
+*.log
+.cache/
+
+# Secrets
+.env*
+!.env.example
+*.key
+*.pem
+*.pfx
