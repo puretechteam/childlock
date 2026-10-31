@@ -7,6 +7,27 @@ public enum LockState
     Locked,
 }
 
+/// <summary>What a lock blocks.</summary>
+public enum LockMode
+{
+    /// <summary>Keyboard and mouse.</summary>
+    Full,
+    KeyboardOnly,
+    MouseOnly,
+    /// <summary>Keyboard and mouse, with every screen blacked out for wiping.</summary>
+    Cleaning,
+}
+
+public static class LockModeExtensions
+{
+    public static bool BlocksKeyboard(this LockMode mode) => mode != LockMode.MouseOnly;
+    public static bool BlocksMouse(this LockMode mode) => mode != LockMode.KeyboardOnly;
+
+    /// <summary>Modes you can pick as the default for the hotkey and auto-lock.</summary>
+    public static bool IsDefaultable(this LockMode mode) =>
+        mode is LockMode.Full or LockMode.KeyboardOnly or LockMode.MouseOnly;
+}
+
 public enum LockReason
 {
     Hotkey,
@@ -15,8 +36,11 @@ public enum LockReason
     CountdownFinished,
     Cancelled,
     UnlockWord,
+    HoldHotkey,
+    CleaningFinished,
     SecureDesktop,
     SessionLocked,
+    HookFailed,
     Exit,
 }
 
@@ -26,6 +50,9 @@ public enum LockReason
 public sealed class LockStateMachine
 {
     public LockState State { get; private set; } = LockState.Unlocked;
+
+    /// <summary>What the current (or last) countdown or lock blocks.</summary>
+    public LockMode Mode { get; private set; } = LockMode.Full;
 
     /// <summary>Seconds left while counting down.</summary>
     public int SecondsLeft { get; private set; }
@@ -37,24 +64,24 @@ public sealed class LockStateMachine
     public event Action<int>? CountdownChanged;
 
     /// <summary>The lock hotkey starts a lock, or cancels a running countdown.</summary>
-    public void HotkeyPressed(int countdownSeconds)
+    public void HotkeyPressed(int countdownSeconds, LockMode mode = LockMode.Full)
     {
         if (State == LockState.CountingDown)
             Set(LockState.Unlocked, LockReason.Cancelled);
         else if (State == LockState.Unlocked && !Paused)
-            Begin(countdownSeconds, LockReason.Hotkey);
+            Begin(countdownSeconds, mode, LockReason.Hotkey);
     }
 
-    public void TrayLock(int countdownSeconds)
+    public void TrayLock(int countdownSeconds, LockMode mode = LockMode.Full)
     {
         if (State == LockState.Unlocked)
-            Begin(countdownSeconds, LockReason.Tray);
+            Begin(countdownSeconds, mode, LockReason.Tray);
     }
 
-    public void IdleElapsed(int countdownSeconds)
+    public void IdleElapsed(int countdownSeconds, LockMode mode = LockMode.Full)
     {
         if (State == LockState.Unlocked && !Paused)
-            Begin(countdownSeconds, LockReason.Idle);
+            Begin(countdownSeconds, mode, LockReason.Idle);
     }
 
     public void Escape()
@@ -80,15 +107,37 @@ public sealed class LockStateMachine
             Set(LockState.Unlocked, LockReason.UnlockWord);
     }
 
-    /// <summary>Failsafe unlock (Ctrl+Alt+Del screen, Windows lock, exit).</summary>
+    /// <summary>The lock hotkey was held long enough while the keyboard is locked.</summary>
+    public void HoldCompleted()
+    {
+        if (State == LockState.Locked && Mode.BlocksKeyboard())
+            Set(LockState.Unlocked, LockReason.HoldHotkey);
+    }
+
+    /// <summary>The lock hotkey was pressed during a mouse-only lock, where the keyboard still works.</summary>
+    public void HotkeyUnlock()
+    {
+        if (State == LockState.Locked && Mode == LockMode.MouseOnly)
+            Set(LockState.Unlocked, LockReason.Hotkey);
+    }
+
+    /// <summary>Cleaning mode's timer ran out.</summary>
+    public void CleaningTimeUp()
+    {
+        if (State == LockState.Locked && Mode == LockMode.Cleaning)
+            Set(LockState.Unlocked, LockReason.CleaningFinished);
+    }
+
+    /// <summary>Failsafe unlock (Ctrl+Alt+Del screen, Windows lock, hook failure, exit).</summary>
     public void ForceUnlock(LockReason reason)
     {
         if (State != LockState.Unlocked)
             Set(LockState.Unlocked, reason);
     }
 
-    void Begin(int countdownSeconds, LockReason reason)
+    void Begin(int countdownSeconds, LockMode mode, LockReason reason)
     {
+        Mode = mode;
         countdownSeconds = Math.Clamp(countdownSeconds, 0, Settings.MaxCountdownSeconds);
         if (countdownSeconds == 0)
         {

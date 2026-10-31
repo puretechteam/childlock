@@ -88,7 +88,9 @@ public class InputGateTests
         Assert.True(Release(VirtualKeys.A + ('c' - 'a')));
         Assert.True(Press(VirtualKeys.A + ('k' - 'a'))); // completing key is itself blocked
         Assert.Equal(LockState.Unlocked, _m.State);
-        Assert.False(Release(VirtualKeys.A + ('k' - 'a')));
+        Assert.True(Press(VirtualKeys.A + ('k' - 'a'))); // its auto-repeat can't type into the app
+        Assert.True(Release(VirtualKeys.A + ('k' - 'a'))); // Windows never saw it go down
+        Assert.False(Press(VirtualKeys.A + ('k' - 'a')));
         Assert.False(Press(VirtualKeys.A));
     }
 

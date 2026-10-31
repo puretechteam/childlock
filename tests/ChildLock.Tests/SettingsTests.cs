@@ -89,14 +89,109 @@ public sealed class SettingsTests : IDisposable
 
     [Theory]
     [InlineData("abcd", true)]
-    [InlineData("abc", false)]
+    [InlineData("abc", true)]
+    [InlineData("a", true)]
     [InlineData("a1b2c3", true)]
-    [InlineData("abcdefghijklmnopqrstuvwxyz012345", true)]
-    [InlineData("abcdefghijklmnopqrstuvwxyz0123456", false)]
-    [InlineData("two words", false)]
+    [InlineData("two words", true)]
+    [InlineData("  open   sesame  ", true)]
+    [InlineData("abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz01", true)]
+    [InlineData("abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz012", false)]
+    [InlineData("pass!", false)]
+    [InlineData("ünlock", false)]
+    [InlineData("   ", false)]
     [InlineData("", false)]
     public void Unlock_word_rules(string word, bool valid)
     {
         Assert.Equal(valid, UnlockWord.Validate(word) is null);
+    }
+
+    [Fact]
+    public void Phrases_are_trimmed_lowercased_and_single_spaced()
+    {
+        Assert.Equal("open sesame", UnlockWord.Normalize("  Open   SESAME "));
+        Assert.Equal("open sesame", new Settings { UnlockWord = " Open  Sesame" }.Normalize().UnlockWord);
+    }
+
+    [Theory]
+    [InlineData("unlock")]
+    [InlineData("Password")]
+    [InlineData("open sesame")]
+    [InlineData("abc")]
+    [InlineData("aaaaaa")]
+    [InlineData("abababab")]
+    [InlineData("1234")]
+    [InlineData("987654")]
+    [InlineData("abcdef")]
+    [InlineData("qwerty")]
+    [InlineData("asdf")]
+    public void Weak_words_get_a_warning(string word)
+    {
+        Assert.NotNull(UnlockWord.Weakness(word));
+    }
+
+    [Theory]
+    [InlineData("tiger7moon")]
+    [InlineData("purple giraffe")]
+    [InlineData("zebra")]
+    [InlineData("pass!")] // invalid words get a validation error instead
+    public void Reasonable_words_get_no_warning(string word)
+    {
+        Assert.Null(UnlockWord.Weakness(word));
+    }
+
+    [Fact]
+    public void Loads_a_version_0_1_0_file_with_defaults_for_new_settings()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(SettingsPath, """
+            {
+              "lockHotkey": "Ctrl+Alt+K",
+              "unlockWord": "banana",
+              "countdownSeconds": 5,
+              "idleLockMinutes": 10,
+              "soundEnabled": true,
+              "firstRunDone": true
+            }
+            """);
+        var s = SettingsStore.Load(SettingsPath);
+        Assert.Equal("Ctrl+Alt+K", s.LockHotkey);
+        Assert.Equal("banana", s.UnlockWord);
+        Assert.Equal(LockMode.Full, s.DefaultLockMode);
+        Assert.Equal(Settings.DefaultHoldSeconds, s.UnlockHoldSeconds);
+        Assert.True(s.ShowBadge);
+        Assert.True(s.ShowWordInTooltip);
+        Assert.True(s.RunAsAdmin);
+        Assert.False(s.ShowTypingProgress);
+        Assert.False(s.RequireWordForSettings);
+        Assert.Equal(60, s.CleaningAutoEndSeconds);
+    }
+
+    [Fact]
+    public void Lock_mode_is_stored_as_readable_text()
+    {
+        SettingsStore.Save(SettingsPath, new Settings { DefaultLockMode = LockMode.KeyboardOnly });
+        Assert.Contains("\"defaultLockMode\": \"keyboardOnly\"", File.ReadAllText(SettingsPath));
+        Assert.Equal(LockMode.KeyboardOnly, SettingsStore.Load(SettingsPath).DefaultLockMode);
+    }
+
+    [Theory]
+    [InlineData(-5, 0)]
+    [InlineData(0, 0)]
+    [InlineData(1, Settings.MinHoldSeconds)]
+    [InlineData(4, 4)]
+    [InlineData(99, Settings.MaxHoldSeconds)]
+    public void Hold_seconds_are_off_or_in_range(int value, int expected)
+    {
+        Assert.Equal(expected, new Settings { UnlockHoldSeconds = value }.Normalize().UnlockHoldSeconds);
+    }
+
+    [Fact]
+    public void New_values_are_clamped()
+    {
+        var s = new Settings { CleaningAutoEndSeconds = 5000, DefaultLockMode = LockMode.Cleaning }.Normalize();
+        Assert.Equal(Settings.MaxCleaningSeconds, s.CleaningAutoEndSeconds);
+        Assert.Equal(LockMode.Full, s.DefaultLockMode);
+        Assert.Equal(LockMode.Full, new Settings { DefaultLockMode = (LockMode)42 }.Normalize().DefaultLockMode);
+        Assert.Equal(0, new Settings { CleaningAutoEndSeconds = -1 }.Normalize().CleaningAutoEndSeconds);
     }
 }

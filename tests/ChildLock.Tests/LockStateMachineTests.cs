@@ -146,4 +146,64 @@ public class LockStateMachineTests
         Assert.Equal(expected, _m.State);
         Assert.InRange(_m.SecondsLeft, 0, Settings.MaxCountdownSeconds);
     }
+
+    [Fact]
+    public void Remembers_the_mode_of_the_lock()
+    {
+        _m.TrayLock(2, LockMode.KeyboardOnly);
+        Assert.Equal(LockMode.KeyboardOnly, _m.Mode);
+        _m.Escape();
+        _m.HotkeyPressed(0, LockMode.MouseOnly);
+        Assert.Equal(LockMode.MouseOnly, _m.Mode);
+    }
+
+    [Fact]
+    public void Hotkey_unlock_only_ends_a_mouse_only_lock()
+    {
+        _m.HotkeyPressed(0, LockMode.Full);
+        _m.HotkeyUnlock();
+        Assert.Equal(LockState.Locked, _m.State);
+        _m.ForceUnlock(LockReason.Exit);
+
+        _m.HotkeyPressed(0, LockMode.MouseOnly);
+        _m.HotkeyUnlock();
+        Assert.Equal((LockState.Unlocked, LockReason.Hotkey), _changes[^1]);
+    }
+
+    [Fact]
+    public void Hold_unlocks_only_when_the_keyboard_is_locked()
+    {
+        _m.HotkeyPressed(0, LockMode.MouseOnly);
+        _m.HoldCompleted();
+        Assert.Equal(LockState.Locked, _m.State);
+        _m.ForceUnlock(LockReason.Exit);
+
+        _m.HotkeyPressed(0, LockMode.KeyboardOnly);
+        _m.HoldCompleted();
+        Assert.Equal((LockState.Unlocked, LockReason.HoldHotkey), _changes[^1]);
+    }
+
+    [Fact]
+    public void Cleaning_time_up_only_ends_cleaning_mode()
+    {
+        _m.TrayLock(0, LockMode.Full);
+        _m.CleaningTimeUp();
+        Assert.Equal(LockState.Locked, _m.State);
+        _m.ForceUnlock(LockReason.Exit);
+
+        _m.TrayLock(0, LockMode.Cleaning);
+        _m.CleaningTimeUp();
+        Assert.Equal((LockState.Unlocked, LockReason.CleaningFinished), _changes[^1]);
+    }
+
+    [Fact]
+    public void Cleaning_counts_down_first()
+    {
+        _m.TrayLock(2, LockMode.Cleaning);
+        Assert.Equal(LockState.CountingDown, _m.State);
+        _m.Tick();
+        _m.Tick();
+        Assert.Equal(LockState.Locked, _m.State);
+        Assert.Equal(LockMode.Cleaning, _m.Mode);
+    }
 }

@@ -7,6 +7,7 @@ public class UnlockWordMatcherTests
         >= 'a' and <= 'z' => VirtualKeys.A + (c - 'a'),
         >= 'A' and <= 'Z' => VirtualKeys.A + (c - 'A'),
         >= '0' and <= '9' => VirtualKeys.D0 + (c - '0'),
+        ' ' => VirtualKeys.Space,
         _ => throw new ArgumentOutOfRangeException(nameof(c)),
     };
 
@@ -55,7 +56,7 @@ public class UnlockWordMatcherTests
     public void Ignores_non_alphanumeric_keys_between_letters()
     {
         var m = new UnlockWordMatcher("unlock");
-        int[] noise = [0x10, 0xA0, 0x20, 0x0D, 0x5B, 0xAD, 0xB3];
+        int[] noise = [0x10, 0xA0, 0x0D, 0x5B, 0xAD, 0xB3]; // Space counts: phrases can contain spaces
         bool hit = false;
         foreach (char c in "unlock")
         {
@@ -92,13 +93,62 @@ public class UnlockWordMatcherTests
     }
 
     [Theory]
-    [InlineData("abc")]
-    [InlineData("has space")]
+    [InlineData("")]
+    [InlineData("  ")]
     [InlineData("ünlock")]
     [InlineData("pass!")]
     public void Rejects_invalid_words(string word)
     {
         Assert.Throws<ArgumentException>(() => new UnlockWordMatcher(word));
+    }
+
+    [Fact]
+    public void Phrases_with_spaces_match_including_the_space_bar()
+    {
+        var m = new UnlockWordMatcher("Open  Sesame");
+        Assert.Equal([10], Type(m, "open sesame"));
+        Assert.Empty(Type(m, "opensesame"));
+    }
+
+    [Fact]
+    public void Single_character_words_match_on_that_key()
+    {
+        var m = new UnlockWordMatcher("x");
+        Assert.Equal([2], Type(m, "abx"));
+    }
+
+    [Fact]
+    public void Progress_counts_the_correct_characters_typed_so_far()
+    {
+        var m = new UnlockWordMatcher("unlock");
+        List<int> progress = [];
+        foreach (char c in "unlunlock")
+        {
+            m.Feed(Vk(c));
+            progress.Add(m.Progress);
+        }
+        // u n l -> 1 2 3, then "u" breaks the run but starts a new one, ... and the final k matches and resets.
+        Assert.Equal([1, 2, 3, 1, 2, 3, 4, 5, 0], progress);
+    }
+
+    [Fact]
+    public void Progress_drops_to_zero_on_a_wrong_key()
+    {
+        var m = new UnlockWordMatcher("unlock");
+        Type(m, "unl");
+        Assert.Equal(3, m.Progress);
+        m.Feed(Vk('z'));
+        Assert.Equal(0, m.Progress);
+    }
+
+    [Fact]
+    public void Progress_follows_overlapping_prefixes()
+    {
+        var m = new UnlockWordMatcher("abab");
+        Type(m, "aba");
+        Assert.Equal(3, m.Progress);
+        m.Feed(Vk('a')); // "abaa": only the last "a" still fits
+        Assert.Equal(1, m.Progress);
     }
 
     [Fact]
