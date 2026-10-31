@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build (Debug and Release)
+        run: |
+          dotnet build ChildLock.slnx -c Debug
+          dotnet build ChildLock.slnx -c Release
+
+      # The integration tests lock this machine's real keyboard and mouse on an interactive desktop,
+      # which a CI runner doesn't have. Run them locally: dotnet test ChildLock.slnx
+      - name: Unit tests
+        run: dotnet test ChildLock.slnx -c Debug --no-build --filter "Category!=Integration" --logger "console;verbosity=normal"
+
+      - name: Publish
+        run: dotnet publish src/ChildLock -c Release -o publish
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ChildLock
+          path: publish/ChildLock.exe
+          if-no-files-found: error
