@@ -4,21 +4,35 @@ using static ChildLock.Native.NativeMethods;
 
 namespace ChildLock;
 
+/// <summary>What one badge shows.</summary>
+/// <param name="Dots">Filled dots under the title, one per character of the word typed so far.</param>
+/// <param name="Progress">0 to 1 for a bar along the bottom, 0 for none.</param>
+internal sealed record BadgeContent(string Title, string Subtitle, BadgeStyle Style, int Dots = 0, double Progress = 0);
+
+internal enum BadgeStyle
+{
+    Countdown,
+    Locked,
+    Holding,
+}
+
 /// <summary>
-/// Small "Locked" pill in the top-right corner of the main screen. It never takes focus and
-/// clicks pass straight through it, so whatever is playing keeps playing.
+/// Small pill in the top-right corner of one screen. It never takes focus and clicks pass
+/// straight through it, so whatever is playing keeps playing.
 /// </summary>
 internal sealed class BadgeForm : Form
 {
     const string LockGlyph = "";
+    const string UnlockGlyph = "";
     const string TimerGlyph = "";
+    const int MaxDots = 12;
 
-    string _title = "";
-    string _subtitle = "";
-    bool _counting;
+    readonly Screen _screen;
+    BadgeContent _content = new("", "", BadgeStyle.Locked);
 
-    public BadgeForm()
+    public BadgeForm(Screen screen)
     {
+        _screen = screen;
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
@@ -40,17 +54,12 @@ internal sealed class BadgeForm : Form
         }
     }
 
-    public void ShowCountdown(int seconds) =>
-        ShowText($"Locking in {seconds}...", "Press Esc to cancel", counting: true);
-
-    public void ShowLocked() => ShowText("Locked", "", counting: false);
-
-    void ShowText(string title, string subtitle, bool counting)
+    public void ShowContent(BadgeContent content)
     {
-        _title = title;
-        _subtitle = subtitle;
-        _counting = counting;
-        LayoutBadge();
+        bool resize = !Visible || content.Title != _content.Title || content.Subtitle != _content.Subtitle
+            || (content.Dots > 0) != (_content.Dots > 0) || Math.Min(content.Dots, MaxDots) != Math.Min(_content.Dots, MaxDots);
+        _content = content;
+        if (resize) LayoutBadge();
         if (!Visible) Show();
         EnsureTopmost();
         Invalidate();
@@ -65,14 +74,17 @@ internal sealed class BadgeForm : Form
 
     float DpiScale => DeviceDpi / 96f;
 
+    static Font TitleFont() => new("Segoe UI Semibold", 11f, FontStyle.Regular, GraphicsUnit.Point);
+    static Font SubtitleFont() => new("Segoe UI", 8.5f, FontStyle.Regular, GraphicsUnit.Point);
+
     void LayoutBadge()
     {
         float s = DpiScale;
-        using var title = new Font("Segoe UI Semibold", 11f, FontStyle.Regular, GraphicsUnit.Point);
-        using var sub = new Font("Segoe UI", 8.5f, FontStyle.Regular, GraphicsUnit.Point);
+        using var title = TitleFont();
+        using var sub = SubtitleFont();
         using var g = CreateGraphics();
-        var titleSize = g.MeasureString(_title, title);
-        var subSize = _subtitle.Length == 0 ? SizeF.Empty : g.MeasureString(_subtitle, sub);
+        var titleSize = g.MeasureString(_content.Title, title);
+        var subSize = SubtitleSize(g, sub, s);
 
         int pad = (int)(12 * s);
         int glyph = (int)(22 * s);
@@ -81,12 +93,24 @@ internal sealed class BadgeForm : Form
         height = Math.Max(height, glyph + pad);
         int width = pad + glyph + (int)(8 * s) + textWidth + pad + (int)(4 * s);
 
-        var area = Screen.PrimaryScreen!.WorkingArea;
+        var area = _screen.WorkingArea;
         int margin = (int)(16 * s);
         Bounds = new Rectangle(area.Right - width - margin, area.Top + margin, width, height);
 
         using var path = RoundedRect(new Rectangle(0, 0, width, height), (int)(10 * s));
+        var old = Region;
         Region = new Region(path);
+        old?.Dispose();
+    }
+
+    SizeF SubtitleSize(Graphics g, Font sub, float s)
+    {
+        if (_content.Dots > 0)
+        {
+            int dots = Math.Min(_content.Dots, MaxDots);
+            return new SizeF(dots * 10 * s, 12 * s);
+        }
+        return _content.Subtitle.Length == 0 ? SizeF.Empty : g.MeasureString(_content.Subtitle, sub);
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -99,26 +123,52 @@ internal sealed class BadgeForm : Form
         int pad = (int)(12 * s);
         int glyphSize = (int)(22 * s);
         using var glyphFont = new Font("Segoe MDL2 Assets", 14f, FontStyle.Regular, GraphicsUnit.Point);
-        using var title = new Font("Segoe UI Semibold", 11f, FontStyle.Regular, GraphicsUnit.Point);
-        using var sub = new Font("Segoe UI", 8.5f, FontStyle.Regular, GraphicsUnit.Point);
-        var accent = _counting ? Color.FromArgb(255, 185, 0) : Color.FromArgb(255, 99, 82);
+        using var title = TitleFont();
+        using var sub = SubtitleFont();
+        var accent = _content.Style switch
+        {
+            BadgeStyle.Countdown => Color.FromArgb(255, 185, 0),
+            BadgeStyle.Holding => Color.FromArgb(108, 203, 95),
+            _ => Color.FromArgb(255, 99, 82),
+        };
+        string glyph = _content.Style switch
+        {
+            BadgeStyle.Countdown => TimerGlyph,
+            BadgeStyle.Holding => UnlockGlyph,
+            _ => LockGlyph,
+        };
 
         using (var brush = new SolidBrush(accent))
         using (var center = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
         {
-            g.DrawString(_counting ? TimerGlyph : LockGlyph, glyphFont, brush,
-                new RectangleF(pad, 0, glyphSize, Height), center);
+            g.DrawString(glyph, glyphFont, brush, new RectangleF(pad, 0, glyphSize, Height), center);
         }
 
         float x = pad + glyphSize + 8 * s;
-        var titleSize = g.MeasureString(_title, title);
-        var subSize = _subtitle.Length == 0 ? SizeF.Empty : g.MeasureString(_subtitle, sub);
+        var titleSize = g.MeasureString(_content.Title, title);
+        var subSize = SubtitleSize(g, sub, s);
         float y = (Height - titleSize.Height - subSize.Height) / 2;
-        g.DrawString(_title, title, Brushes.White, x, y);
-        if (_subtitle.Length > 0)
+        g.DrawString(_content.Title, title, Brushes.White, x, y);
+
+        if (_content.Dots > 0)
+        {
+            using var dot = new SolidBrush(Color.FromArgb(220, 220, 220));
+            float d = 6 * s;
+            float dotY = y + titleSize.Height + (subSize.Height - d) / 2;
+            for (int i = 0; i < Math.Min(_content.Dots, MaxDots); i++)
+                g.FillEllipse(dot, x + 1 * s + i * 10 * s, dotY, d, d);
+        }
+        else if (_content.Subtitle.Length > 0)
         {
             using var dim = new SolidBrush(Color.FromArgb(200, 200, 200));
-            g.DrawString(_subtitle, sub, dim, x, y + titleSize.Height);
+            g.DrawString(_content.Subtitle, sub, dim, x, y + titleSize.Height);
+        }
+
+        if (_content.Progress > 0)
+        {
+            using var bar = new SolidBrush(accent);
+            float h = Math.Max(2, 3 * s);
+            g.FillRectangle(bar, 0, Height - h, (float)(Width * Math.Min(1, _content.Progress)), h);
         }
     }
 
@@ -126,6 +176,12 @@ internal sealed class BadgeForm : Form
     {
         base.OnDpiChanged(e);
         if (Visible) LayoutBadge();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) Region?.Dispose();
+        base.Dispose(disposing);
     }
 
     static GraphicsPath RoundedRect(Rectangle r, int radius)

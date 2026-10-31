@@ -13,15 +13,16 @@
   </PropertyGroup>
 
   <!--
-    Release builds run elevated so they can also block input aimed at admin windows (Task Manager etc.).
-    Debug builds run as the normal user so development and the integration test need no UAC prompt.
-    Override either way with -p:ChildLockElevate=true|false.
+    Release builds ask Windows for admin rights at start, so they can also block input aimed at admin windows
+    (Task Manager etc.); declining keeps ChildLock running without them. Debug builds never ask, so development
+    and the integration test need no UAC prompt. Override either way with -p:ChildLockElevate=true|false.
+    The manifest is always asInvoker: a requireAdministrator manifest would make declining the prompt fatal.
   -->
   <PropertyGroup>
     <ChildLockElevate Condition="'$(ChildLockElevate)' == '' and '$(Configuration)' == 'Release'">true</ChildLockElevate>
     <ChildLockElevate Condition="'$(ChildLockElevate)' == ''">false</ChildLockElevate>
-    <ApplicationManifest Condition="'$(ChildLockElevate)' == 'true'">app.manifest</ApplicationManifest>
-    <ApplicationManifest Condition="'$(ChildLockElevate)' != 'true'">app.asinvoker.manifest</ApplicationManifest>
+    <DefineConstants Condition="'$(ChildLockElevate)' == 'true'">$(DefineConstants);CHILDLOCK_SELF_ELEVATE</DefineConstants>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <!-- Release build: one small exe that uses the installed .NET 10 Desktop Runtime. -->
@@ -33,6 +34,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ChildLock.Core\ChildLock.Core.csproj" />
+    <!-- Tray icon, native menus and toasts. A git submodule (clone this repo recursively). -->
+    <ProjectReference Include="..\..\external\puretech-tray-dotnet\src\PureTech.Tray\PureTech.Tray.csproj" />
   </ItemGroup>
 
 </Project>

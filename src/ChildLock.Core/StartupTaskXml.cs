@@ -67,4 +67,18 @@ public static class StartupTaskXml
             return null;
         }
     }
+
+    /// <summary>The program path out of a Run entry such as <c>"C:\Tools\ChildLock.exe" --diag</c>, or null.</summary>
+    public static string? ReadRunCommand(string value)
+    {
+        value = value.Trim();
+        if (value.Length == 0) return null;
+        if (value[0] == '"')
+        {
+            int end = value.IndexOf('"', 1);
+            return end > 1 ? value[1..end] : null;
+        }
+        int exe = value.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+        return exe > 0 ? value[..(exe + 4)] : value;
+    }
 }

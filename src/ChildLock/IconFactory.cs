@@ -52,6 +52,49 @@ internal static class IconFactory
         }
     }
 
+    /// <summary>The padlock as pixels for PureTech.Tray, which scales it to the size the shell wants.</summary>
+    public static PureTech.Tray.Rgba TrayPixels(bool locked, bool paused, int size = 64)
+    {
+        using var bmp = Draw(size, locked, paused && !locked ? PausedColor : null);
+        var data = bmp.LockBits(new Rectangle(0, 0, size, size), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        try
+        {
+            var bgra = new byte[size * size * 4];
+            for (int y = 0; y < size; y++)
+                System.Runtime.InteropServices.Marshal.Copy(data.Scan0 + y * data.Stride, bgra, y * size * 4, size * 4);
+            return PureTech.Tray.Rgba.FromBgra(bgra, size, size);
+        }
+        finally
+        {
+            bmp.UnlockBits(data);
+        }
+    }
+
+    /// <summary>
+    /// The icon toasts and the Start menu shortcut show, written once to local app data. Null if it can't be written.
+    /// </summary>
+    public static string? AppIconPath()
+    {
+        string path = Path.Combine(LocalDataDirectory, "childlock.ico");
+        try
+        {
+            if (!File.Exists(path))
+            {
+                Directory.CreateDirectory(LocalDataDirectory);
+                WriteIco(path);
+            }
+            return path;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Diag.Log("couldn't write app icon: " + e.Message);
+            return null;
+        }
+    }
+
+    public static string LocalDataDirectory =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ChildLock");
+
     public static Icon TrayIcon(bool locked, bool paused)
     {
         int size = SystemInformation.SmallIconSize.Width;
@@ -59,7 +102,7 @@ internal static class IconFactory
         return ToIcon(bmp);
     }
 
-    /// <summary>Writes a multi-size .ico (PNG entries) for the exe. Used once at dev time.</summary>
+    /// <summary>Writes a multi-size .ico (PNG entries): the exe's icon at dev time, and the toast icon.</summary>
     public static void WriteIco(string path)
     {
         int[] sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256];

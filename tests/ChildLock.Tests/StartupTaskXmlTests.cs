@@ -49,4 +49,15 @@ public class StartupTaskXmlTests
     {
         Assert.Null(StartupTaskXml.ReadCommand("not xml"));
     }
+
+    [Theory]
+    [InlineData("\"C:\\Program Files\\Child Lock\\ChildLock.exe\"", @"C:\Program Files\Child Lock\ChildLock.exe")]
+    [InlineData("\"C:\\Tools\\ChildLock.exe\" --diag", @"C:\Tools\ChildLock.exe")]
+    [InlineData(@"C:\Tools\ChildLock.exe --diag", @"C:\Tools\ChildLock.exe")]
+    [InlineData("  ", null)]
+    [InlineData("\"", null)]
+    public void Run_entry_command_is_read_with_or_without_quotes(string value, string? expected)
+    {
+        Assert.Equal(expected, StartupTaskXml.ReadRunCommand(value));
+    }
 }

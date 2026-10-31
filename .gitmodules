@@ -1,0 +1,3 @@
+[submodule "external/puretech-tray-dotnet"]
+	path = external/puretech-tray-dotnet
+	url = https://github.com/puretechteam/puretech-tray-dotnet

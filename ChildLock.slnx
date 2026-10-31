@@ -3,6 +3,9 @@
     <Project Path="src/ChildLock.Core/ChildLock.Core.csproj" />
     <Project Path="src/ChildLock/ChildLock.csproj" />
   </Folder>
+  <Folder Name="/external/">
+    <Project Path="external/puretech-tray-dotnet/src/PureTech.Tray/PureTech.Tray.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ChildLock.Tests/ChildLock.Tests.csproj" />
   </Folder>

@@ -17,7 +17,7 @@ internal sealed class AppHarness : IDisposable
 
     public string LogPath => Path.Combine(_dir, "diag.log");
 
-    public AppHarness(int countdownSeconds, string unlockWord = "unlock")
+    public AppHarness(int countdownSeconds, string unlockWord = "unlock", string lockMode = "full", int holdSeconds = 3)
     {
         Directory.CreateDirectory(_dir);
         File.WriteAllText(Path.Combine(_dir, "settings.json"), $$"""
@@ -26,6 +26,8 @@ internal sealed class AppHarness : IDisposable
               "unlockWord": "{{unlockWord}}",
               "countdownSeconds": {{countdownSeconds}},
               "idleLockMinutes": 0,
+              "defaultLockMode": "{{lockMode}}",
+              "unlockHoldSeconds": {{holdSeconds}},
               "soundEnabled": false,
               "firstRunDone": true
             }
@@ -41,6 +43,7 @@ internal sealed class AppHarness : IDisposable
         info.ArgumentList.Add("--settings");
         info.ArgumentList.Add(Path.Combine(_dir, "settings.json"));
         info.ArgumentList.Add("--diag");
+        info.ArgumentList.Add("--no-elevate"); // even a Release build must never show a UAC prompt here
         _process = Process.Start(info)!;
 
         try

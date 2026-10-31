@@ -198,6 +198,87 @@ public sealed partial class LockIntegrationTests(ITestOutputHelper output)
         Assert.True(lockedCpuPct < 1);
     }
 
+    [Fact]
+    public void Holding_the_hotkey_unlocks_and_leaves_nothing_stuck()
+    {
+        using var probe = new InputProbe();
+        using var app = new AppHarness(countdownSeconds: 0, holdSeconds: 2);
+        probe.Preflight();
+
+        Inject.Chord(AppHarness.HotkeyVks);
+        app.WaitFor("state=Locked reason=Hotkey");
+        Thread.Sleep(200);
+        probe.Reset();
+
+        // Injected keys don't auto-repeat, so this also proves the timer completes the hold on its own.
+        foreach (int vk in AppHarness.HotkeyVks) Inject.KeyDown(vk);
+        app.WaitFor("state=Unlocked reason=HoldHotkey", timeoutMs: 6000);
+        foreach (int vk in AppHarness.HotkeyVks.Reverse()) Inject.KeyUp(vk);
+        Thread.Sleep(200);
+
+        output.WriteLine($"hold leaked: keys={probe.Keys} mouse={probe.Mouse}");
+        Assert.Equal(0, probe.Keys);
+        Assert.False(Inject.IsDown(Inject.VK_CONTROL));
+        Assert.False(Inject.IsDown(Inject.VK_MENU));
+        Assert.False(Inject.IsDown(Inject.VK_SHIFT));
+    }
+
+    [Fact]
+    public void Keyboard_only_lock_leaves_the_mouse_working()
+    {
+        using var probe = new InputProbe();
+        using var app = new AppHarness(countdownSeconds: 0, lockMode: "keyboardOnly");
+        probe.Preflight();
+
+        Inject.Chord(AppHarness.HotkeyVks);
+        app.WaitFor("state=Locked reason=Hotkey mode=KeyboardOnly");
+        Thread.Sleep(200);
+        probe.Reset();
+        var cursor = Inject.CursorPosition();
+        foreach (int vk in HarmlessKeys) Inject.Tap(vk);
+        Inject.MoveBy(5, 5);
+        Thread.Sleep(200);
+        output.WriteLine($"keyboard only: keys={probe.Keys} mouse={probe.Mouse}");
+        Assert.Equal(0, probe.Keys);
+        Assert.True(probe.Mouse >= 1);
+        Assert.NotEqual(cursor, Inject.CursorPosition());
+        Inject.MoveBy(-5, -5);
+
+        Inject.Type("unlock");
+        app.WaitFor("state=Unlocked reason=UnlockWord");
+    }
+
+    [Fact]
+    public void Mouse_only_lock_leaves_keys_working_and_the_hotkey_unlocks()
+    {
+        using var probe = new InputProbe();
+        using var app = new AppHarness(countdownSeconds: 0, lockMode: "mouseOnly");
+        probe.Preflight();
+
+        Inject.Chord(AppHarness.HotkeyVks);
+        app.WaitFor("state=Locked reason=Hotkey mode=MouseOnly");
+        Thread.Sleep(200);
+        probe.Reset();
+        var cursor = Inject.CursorPosition();
+        Inject.Tap(Inject.VK_F13);
+        Inject.MoveBy(10, 10);
+        Inject.LeftClick();
+        Thread.Sleep(200);
+        output.WriteLine($"mouse only: keys={probe.Keys} mouse={probe.Mouse}");
+        Assert.Equal(2, probe.Keys);
+        Assert.Equal(0, probe.Mouse);
+        Assert.Equal(cursor, Inject.CursorPosition());
+
+        Inject.Chord(AppHarness.HotkeyVks);
+        app.WaitFor("state=Unlocked reason=Hotkey");
+        Thread.Sleep(500);
+        probe.Reset();
+        Inject.MoveBy(1, 0);
+        Inject.MoveBy(-1, 0);
+        Thread.Sleep(200);
+        Assert.True(probe.Mouse >= 2); // unlocked, and the same press didn't start a new lock
+    }
+
     [GeneratedRegex(@"max_us=([\d.]+)")]
     private static partial Regex MaxUs();
 }
