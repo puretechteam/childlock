@@ -55,7 +55,9 @@ ChildLock shows its notifications as Windows toasts, some with buttons such as *
 
 ## Using it
 
-![Countdown badge](docs/images/badge-countdown.png) ![Locked badge](docs/images/badge-locked.png)
+![Countdown badge](docs/images/badge-countdown.png) ![Locked badge](docs/images/badge-locked.png) ![Locked badge with typing dots](docs/images/badge-dots.png) ![Keyboard locked badge](docs/images/badge-keyboard.png) ![Mouse locked badge](docs/images/badge-mouse.png)
+
+The badge counts down, then shows what's locked. The dots for each correct character of the unlock word are optional.
 
 | To | Do this |
 |---|---|
@@ -84,7 +86,10 @@ While locked, the menu only shows that ChildLock is locked; nothing in it can be
 
 ### Settings
 
-![Settings window, light](docs/images/settings-light.png) ![Settings window, dark](docs/images/settings-dark.png)
+<p>
+  <img src="docs/images/settings-light.png" alt="Settings window, light" width="49%">
+  <img src="docs/images/settings-dark.png" alt="Settings window, dark" width="49%">
+</p>
 
 | Setting | Default | Notes |
 |---|---|---|
