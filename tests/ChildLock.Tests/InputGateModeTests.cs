@@ -135,6 +135,53 @@ public class InputGateModeTests
     }
 
     [Fact]
+    public void Reports_when_it_is_still_waiting_for_held_keys_after_an_unlock()
+    {
+        Assert.False(_gate.Swallowing);
+        _m.HotkeyPressed(0);
+        PressChord();
+        Assert.False(_gate.Swallowing); // nothing to swallow while locked
+        _now += 3_000;
+        _gate.Poll();
+        Assert.Equal(LockState.Unlocked, _m.State);
+        Assert.True(_gate.Swallowing);
+        Release(L);
+        Release(LAlt);
+        Assert.True(_gate.Swallowing); // Ctrl is still down
+        Release(LCtrl);
+        Assert.False(_gate.Swallowing);
+    }
+
+    [Fact]
+    public void Can_stop_waiting_for_held_keys()
+    {
+        _m.HotkeyPressed(0);
+        PressChord();
+        _now += 3_000;
+        _gate.Poll();
+        Assert.True(_gate.Swallowing);
+        _gate.StopSwallowing();
+        Assert.False(_gate.Swallowing);
+        Assert.False(Press(L)); // and those keys work normally again
+    }
+
+    [Fact]
+    public void Typing_the_word_leaves_nothing_to_wait_for_once_the_last_key_is_up()
+    {
+        _m.HotkeyPressed(0);
+        foreach (char c in "unloc")
+        {
+            Press(VirtualKeys.A + (c - 'a'));
+            Release(VirtualKeys.A + (c - 'a'));
+        }
+        Press(VirtualKeys.A + ('k' - 'a'));
+        Assert.Equal(LockState.Unlocked, _m.State);
+        Assert.True(_gate.Swallowing); // "k" is still down
+        Assert.True(Release(VirtualKeys.A + ('k' - 'a')));
+        Assert.False(_gate.Swallowing);
+    }
+
+    [Fact]
     public void Releasing_or_adding_a_key_cancels_the_hold()
     {
         _m.HotkeyPressed(0);

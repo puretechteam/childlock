@@ -1,5 +1,7 @@
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Drawing.Text;
+using ChildLock.Ui;
 using static ChildLock.Native.NativeMethods;
 
 namespace ChildLock;
@@ -18,17 +20,23 @@ internal enum BadgeStyle
 
 /// <summary>
 /// Small pill in the top-right corner of one screen. It never takes focus and clicks pass
-/// straight through it, so whatever is playing keeps playing.
+/// straight through it, so whatever is playing keeps playing. It is a picture with its own
+/// transparency (smooth corners, soft shadow) that fades in and out.
 /// </summary>
 internal sealed class BadgeForm : Form
 {
-    const string LockGlyph = "";
-    const string UnlockGlyph = "";
-    const string TimerGlyph = "";
+    const string TimerGlyph = ""; // Segoe MDL2 Assets, which ships with Windows 10 and 11
     const int MaxDots = 12;
+    const int FadeInMs = 150;
+    const int FadeOutMs = 200;
 
     readonly Screen _screen;
-    BadgeContent _content = new("", "", BadgeStyle.Locked);
+    readonly System.Windows.Forms.Timer _fade = new() { Interval = 15 };
+    BadgeContent? _content;
+    Bitmap? _image;
+    double _alpha;
+    double _target;
+    long _fadeTick;
 
     public BadgeForm(Screen screen)
     {
@@ -36,10 +44,8 @@ internal sealed class BadgeForm : Form
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
-        BackColor = Color.FromArgb(32, 32, 32);
-        Opacity = 0.88;
-        DoubleBuffered = true;
         Text = "ChildLock";
+        _fade.Tick += (_, _) => FadeStep();
     }
 
     protected override bool ShowWithoutActivation => true;
@@ -56,13 +62,24 @@ internal sealed class BadgeForm : Form
 
     public void ShowContent(BadgeContent content)
     {
-        bool resize = !Visible || content.Title != _content.Title || content.Subtitle != _content.Subtitle
-            || (content.Dots > 0) != (_content.Dots > 0) || Math.Min(content.Dots, MaxDots) != Math.Min(_content.Dots, MaxDots);
-        _content = content;
-        if (resize) LayoutBadge();
-        if (!Visible) Show();
+        if (content != _content || _image is null)
+        {
+            _content = content;
+            Redraw();
+        }
+        if (!Visible)
+        {
+            _alpha = 0;
+            Show();
+        }
+        FadeTo(1);
         EnsureTopmost();
-        Invalidate();
+    }
+
+    /// <summary>Fades the badge away, then hides it.</summary>
+    public void FadeOut()
+    {
+        if (Visible) FadeTo(0);
     }
 
     /// <summary>Puts the badge back on top in case a full-screen player covered it.</summary>
@@ -72,127 +89,195 @@ internal sealed class BadgeForm : Form
             SetWindowPos(Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
 
-    float DpiScale => DeviceDpi / 96f;
-
-    static Font TitleFont() => new("Segoe UI Semibold", 11f, FontStyle.Regular, GraphicsUnit.Point);
-    static Font SubtitleFont() => new("Segoe UI", 8.5f, FontStyle.Regular, GraphicsUnit.Point);
-
-    void LayoutBadge()
+    void Redraw()
     {
-        float s = DpiScale;
-        using var title = TitleFont();
-        using var sub = SubtitleFont();
-        using var g = CreateGraphics();
-        var titleSize = g.MeasureString(_content.Title, title);
-        var subSize = SubtitleSize(g, sub, s);
-
-        int pad = (int)(12 * s);
-        int glyph = (int)(22 * s);
-        int textWidth = (int)Math.Ceiling(Math.Max(titleSize.Width, subSize.Width));
-        int height = (int)Math.Ceiling(titleSize.Height + subSize.Height) + pad;
-        height = Math.Max(height, glyph + pad);
-        int width = pad + glyph + (int)(8 * s) + textWidth + pad + (int)(4 * s);
-
-        var area = _screen.WorkingArea;
+        float s = DeviceDpi / 96f;
+        _image?.Dispose();
+        _image = Render(_content!, s);
+        int shadow = ShadowSize(s);
         int margin = (int)(16 * s);
-        Bounds = new Rectangle(area.Right - width - margin, area.Top + margin, width, height);
-
-        using var path = RoundedRect(new Rectangle(0, 0, width, height), (int)(10 * s));
-        var old = Region;
-        Region = new Region(path);
-        old?.Dispose();
+        var area = _screen.WorkingArea;
+        // The picture includes the shadow around the pill; the pill itself sits 16 px from the corner.
+        Bounds = new Rectangle(area.Right - margin - _image.Width + shadow, area.Top + margin - shadow, _image.Width, _image.Height);
+        Push();
     }
 
-    SizeF SubtitleSize(Graphics g, Font sub, float s)
+    void FadeTo(double target)
     {
-        if (_content.Dots > 0)
+        _target = target;
+        if (Math.Abs(_alpha - target) < 0.001)
         {
-            int dots = Math.Min(_content.Dots, MaxDots);
-            return new SizeF(dots * 10 * s, 12 * s);
+            Push();
+            return;
         }
-        return _content.Subtitle.Length == 0 ? SizeF.Empty : g.MeasureString(_content.Subtitle, sub);
+        _fadeTick = Environment.TickCount64;
+        _fade.Start();
     }
 
-    protected override void OnPaint(PaintEventArgs e)
+    void FadeStep()
     {
-        float s = DpiScale;
-        var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+        long now = Environment.TickCount64;
+        double step = (now - _fadeTick) / (double)(_target > _alpha ? FadeInMs : FadeOutMs);
+        _fadeTick = now;
+        _alpha = _target > _alpha ? Math.Min(_target, _alpha + step) : Math.Max(_target, _alpha - step);
+        Push();
+        if (Math.Abs(_alpha - _target) > 0.001) return;
+        _fade.Stop();
+        if (_target == 0) Hide();
+    }
 
-        int pad = (int)(12 * s);
-        int glyphSize = (int)(22 * s);
-        using var glyphFont = new Font("Segoe MDL2 Assets", 14f, FontStyle.Regular, GraphicsUnit.Point);
-        using var title = TitleFont();
-        using var sub = SubtitleFont();
-        var accent = _content.Style switch
+    /// <summary>Hands the picture to Windows with the current fade level.</summary>
+    void Push()
+    {
+        if (_image is null || !IsHandleCreated || !Visible) return;
+        nint screenDc = GetDC(0);
+        nint memoryDc = CreateCompatibleDC(screenDc);
+        nint bitmap = _image.GetHbitmap(Color.FromArgb(0));
+        nint previous = SelectObject(memoryDc, bitmap);
+        try
         {
-            BadgeStyle.Countdown => Color.FromArgb(255, 185, 0),
-            BadgeStyle.Holding => Color.FromArgb(108, 203, 95),
-            _ => Color.FromArgb(255, 99, 82),
-        };
-        string glyph = _content.Style switch
-        {
-            BadgeStyle.Countdown => TimerGlyph,
-            BadgeStyle.Holding => UnlockGlyph,
-            _ => LockGlyph,
-        };
-
-        using (var brush = new SolidBrush(accent))
-        using (var center = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
-        {
-            g.DrawString(glyph, glyphFont, brush, new RectangleF(pad, 0, glyphSize, Height), center);
+            var size = new SIZE { cx = _image.Width, cy = _image.Height };
+            var from = new POINT();
+            var to = new POINT { x = Left, y = Top };
+            var blend = new BLENDFUNCTION { SourceConstantAlpha = (byte)Math.Round(_alpha * 255), AlphaFormat = AC_SRC_ALPHA };
+            UpdateLayeredWindow(Handle, screenDc, ref to, ref size, memoryDc, ref from, 0, ref blend, ULW_ALPHA);
         }
-
-        float x = pad + glyphSize + 8 * s;
-        var titleSize = g.MeasureString(_content.Title, title);
-        var subSize = SubtitleSize(g, sub, s);
-        float y = (Height - titleSize.Height - subSize.Height) / 2;
-        g.DrawString(_content.Title, title, Brushes.White, x, y);
-
-        if (_content.Dots > 0)
+        finally
         {
-            using var dot = new SolidBrush(Color.FromArgb(220, 220, 220));
-            float d = 6 * s;
-            float dotY = y + titleSize.Height + (subSize.Height - d) / 2;
-            for (int i = 0; i < Math.Min(_content.Dots, MaxDots); i++)
-                g.FillEllipse(dot, x + 1 * s + i * 10 * s, dotY, d, d);
+            SelectObject(memoryDc, previous);
+            DeleteObject(bitmap);
+            DeleteDC(memoryDc);
+            _ = ReleaseDC(0, screenDc);
         }
-        else if (_content.Subtitle.Length > 0)
-        {
-            using var dim = new SolidBrush(Color.FromArgb(200, 200, 200));
-            g.DrawString(_content.Subtitle, sub, dim, x, y + titleSize.Height);
-        }
+    }
 
-        if (_content.Progress > 0)
-        {
-            using var bar = new SolidBrush(accent);
-            float h = Math.Max(2, 3 * s);
-            g.FillRectangle(bar, 0, Height - h, (float)(Width * Math.Min(1, _content.Progress)), h);
-        }
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (Visible) Push();
     }
 
     protected override void OnDpiChanged(DpiChangedEventArgs e)
     {
         base.OnDpiChanged(e);
-        if (Visible) LayoutBadge();
+        if (Visible && _content is not null) Redraw();
     }
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) Region?.Dispose();
+        if (disposing)
+        {
+            _fade.Dispose();
+            _image?.Dispose();
+        }
         base.Dispose(disposing);
     }
 
-    static GraphicsPath RoundedRect(Rectangle r, int radius)
+    static int ShadowSize(float s) => (int)Math.Ceiling(10 * s);
+
+    /// <summary>The badge as a picture with transparency: shadow, pill, icon and text.</summary>
+    /// <param name="s">Screen scale: 1 at 100%, 1.5 at 150%.</param>
+    public static Bitmap Render(BadgeContent content, float s)
     {
-        int d = radius * 2;
-        var path = new GraphicsPath();
-        path.AddArc(r.X, r.Y, d, d, 180, 90);
-        path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-        path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-        path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-        path.CloseFigure();
-        return path;
+        using var title = new Font("Segoe UI Semibold", 14.5f * s, FontStyle.Regular, GraphicsUnit.Pixel);
+        using var sub = new Font("Segoe UI", 11.5f * s, FontStyle.Regular, GraphicsUnit.Pixel);
+        int dots = Math.Min(content.Dots, MaxDots);
+
+        SizeF titleSize, subSize;
+        using (var scratch = new Bitmap(1, 1))
+        using (var measure = Graphics.FromImage(scratch))
+        {
+            measure.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+            titleSize = measure.MeasureString(content.Title, title);
+            subSize = dots > 0 ? new SizeF(dots * 10 * s, 12 * s)
+                : content.Subtitle.Length == 0 ? SizeF.Empty : measure.MeasureString(content.Subtitle, sub);
+        }
+
+        float pad = 12 * s;
+        float icon = 22 * s;
+        int width = (int)Math.Ceiling(pad + icon + 8 * s + Math.Max(titleSize.Width, subSize.Width) + pad);
+        int height = (int)Math.Ceiling(Math.Max(titleSize.Height + subSize.Height + pad, icon + pad));
+        int shadow = ShadowSize(s);
+
+        var bmp = new Bitmap(width + shadow * 2, height + shadow * 2, PixelFormat.Format32bppArgb);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.PixelOffsetMode = PixelOffsetMode.Half;
+        g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+        g.Clear(Color.Transparent);
+
+        var pill = new RectangleF(shadow, shadow, width, height);
+        float radius = 10 * s;
+
+        // Soft shadow: faint layers that add up toward the pill, shifted down a little.
+        using (var layer = new SolidBrush(Color.FromArgb(3, 0, 0, 0)))
+        {
+            for (int i = shadow; i >= 1; i--)
+            {
+                var spread = RectangleF.Inflate(pill, i, i);
+                spread.Offset(0, 2 * s);
+                using var path = Theme.RoundedRect(spread, radius + i);
+                g.FillPath(layer, path);
+            }
+        }
+
+        var accent = content.Style switch
+        {
+            BadgeStyle.Countdown => Color.FromArgb(255, 185, 0),
+            BadgeStyle.Holding => Color.FromArgb(108, 203, 95),
+            _ => Color.FromArgb(255, 99, 82),
+        };
+
+        using (var shape = Theme.RoundedRect(pill, radius))
+        {
+            using var fill = new SolidBrush(Color.FromArgb(232, 30, 30, 30));
+            g.FillPath(fill, shape);
+
+            if (content.Progress > 0)
+            {
+                var state = g.Save();
+                g.SetClip(shape);
+                using var bar = new SolidBrush(accent);
+                float h = Math.Max(2, 3 * s);
+                g.FillRectangle(bar, pill.X, pill.Bottom - h, (float)(pill.Width * Math.Min(1, content.Progress)), h);
+                g.Restore(state);
+            }
+        }
+        // A thin light edge keeps the badge readable on dark video.
+        using (var edge = new Pen(Color.FromArgb(56, 255, 255, 255), Math.Max(1, s)))
+        using (var inner = Theme.RoundedRect(RectangleF.Inflate(pill, -edge.Width / 2, -edge.Width / 2), radius - edge.Width / 2))
+            g.DrawPath(edge, inner);
+
+        var iconBox = new RectangleF(pill.X + pad, pill.Y + (pill.Height - icon) / 2, icon, icon);
+        if (content.Style == BadgeStyle.Countdown)
+        {
+            using var glyphFont = new Font("Segoe MDL2 Assets", 18.5f * s, FontStyle.Regular, GraphicsUnit.Pixel);
+            using var brush = new SolidBrush(accent);
+            using var center = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            g.DrawString(TimerGlyph, glyphFont, brush, iconBox, center);
+        }
+        else
+        {
+            // The padlock is drawn in a slightly larger box so it matches the weight of the text.
+            IconFactory.DrawPadlock(g, RectangleF.Inflate(iconBox, 3 * s, 3 * s), accent, open: content.Style == BadgeStyle.Holding, bold: false);
+        }
+
+        float x = iconBox.Right + 8 * s;
+        float y = pill.Y + (pill.Height - titleSize.Height - subSize.Height) / 2;
+        g.DrawString(content.Title, title, Brushes.White, x, y);
+        if (dots > 0)
+        {
+            using var dot = new SolidBrush(Color.FromArgb(220, 220, 220));
+            float d = 6 * s;
+            float dotY = y + titleSize.Height + (subSize.Height - d) / 2;
+            for (int i = 0; i < dots; i++)
+                g.FillEllipse(dot, x + 2 * s + i * 10 * s, dotY, d, d);
+        }
+        else if (content.Subtitle.Length > 0)
+        {
+            using var dim = new SolidBrush(Color.FromArgb(205, 205, 205));
+            g.DrawString(content.Subtitle, sub, dim, x, y + titleSize.Height);
+        }
+        return bmp;
     }
 }

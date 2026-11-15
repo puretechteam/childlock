@@ -1,10 +1,15 @@
 using ChildLock.Core;
+using ChildLock.Ui;
 
 namespace ChildLock;
 
 /// <summary>What the settings window hands back when you press Save.</summary>
 internal sealed record SettingsChoice(Settings Settings, bool StartAtLogin);
 
+/// <summary>
+/// The settings window: a header, one card of rows per group in a scrolling column, and Save and Cancel
+/// in a footer that stays put.
+/// </summary>
 internal sealed class SettingsForm : Form
 {
     static readonly (LockMode Mode, string Text)[] Modes =
@@ -14,26 +19,29 @@ internal sealed class SettingsForm : Form
         (LockMode.MouseOnly, "Mouse only"),
     ];
 
-    static readonly Font HeadingFont = new(SystemFonts.MessageBoxFont ?? SystemFonts.DefaultFont, FontStyle.Bold);
+    const int CardWidth = 540;
+    const int FieldWidth = 190;
+    const int MaxHeight = 720;
 
     readonly Func<SettingsChoice, string?> _apply;
     readonly Settings _original;
-    readonly HotkeyBox _hotkey = new() { Width = 220 };
-    readonly ComboBox _mode = new() { Width = 220, DropDownStyle = ComboBoxStyle.DropDownList };
-    readonly NumericUpDown _countdown = new() { Minimum = 0, Maximum = Settings.MaxCountdownSeconds, Width = 64 };
-    readonly NumericUpDown _idle = new() { Minimum = 0, Maximum = Settings.MaxIdleLockMinutes, Width = 64 };
-    readonly TextBox _word = new() { Width = 220, MaxLength = UnlockWord.MaxLength };
-    readonly Label _wordWarning = new() { AutoSize = true, ForeColor = Color.FromArgb(200, 120, 0), MaximumSize = new Size(380, 0) };
-    readonly NumericUpDown _hold = new() { Minimum = 0, Maximum = Settings.MaxHoldSeconds, Width = 64 };
-    readonly CheckBox _dots = new() { Text = "Show a dot on the badge for each correct character typed", AutoSize = true };
-    readonly CheckBox _tooltipWord = new() { Text = "Show the unlock word when hovering over the tray icon", AutoSize = true };
-    readonly CheckBox _protect = new() { Text = "Ask for the unlock word to open Settings, pause or exit", AutoSize = true };
-    readonly CheckBox _badge = new() { Text = "Show the \"Locked\" badge (the countdown always shows)", AutoSize = true };
-    readonly CheckBox _sound = new() { Text = "Play a sound when locking and unlocking", AutoSize = true };
-    readonly NumericUpDown _cleaning = new() { Minimum = 0, Maximum = Settings.MaxCleaningSeconds, Increment = 10, Width = 64 };
-    readonly CheckBox _startAtLogin = new() { Text = "Start ChildLock when I sign in", AutoSize = true };
-    readonly CheckBox _admin = new() { Text = "Run as administrator, so admin windows such as Task Manager are locked too", AutoSize = true };
-    readonly Label _error = new() { AutoSize = true, ForeColor = Color.FromArgb(220, 60, 50), MaximumSize = new Size(480, 0) };
+    readonly HotkeyBox _hotkey = new();
+    readonly ComboBox _mode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    readonly NumericUpDown _countdown = new() { Minimum = 0, Maximum = Settings.MaxCountdownSeconds };
+    readonly NumericUpDown _idle = new() { Minimum = 0, Maximum = Settings.MaxIdleLockMinutes };
+    readonly TextBox _word = new() { MaxLength = UnlockWord.MaxLength };
+    readonly NumericUpDown _hold = new() { Minimum = 0, Maximum = Settings.MaxHoldSeconds };
+    readonly ToggleSwitch _dots = new();
+    readonly ToggleSwitch _tooltipWord = new();
+    readonly ToggleSwitch _protect = new();
+    readonly ToggleSwitch _badge = new();
+    readonly ToggleSwitch _sound = new();
+    readonly NumericUpDown _cleaning = new() { Minimum = 0, Maximum = Settings.MaxCleaningSeconds, Increment = 10 };
+    readonly ToggleSwitch _startAtLogin = new();
+    readonly ToggleSwitch _admin = new();
+    readonly Label _wordWarning;
+    readonly Label _error;
+    readonly PictureBox _logo = new() { SizeMode = PictureBoxSizeMode.AutoSize };
 
     /// <param name="apply">Validates and applies the choice. Returns null on success or an error to show.</param>
     public SettingsForm(Settings settings, bool startAtLogin, Func<SettingsChoice, string?> apply)
@@ -47,11 +55,18 @@ internal sealed class SettingsForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        AutoSize = true;
-        AutoSizeMode = AutoSizeMode.GrowAndShrink;
         AutoScaleMode = AutoScaleMode.Dpi;
-        Padding = new Padding(16);
         ShowInTaskbar = true;
+        BackColor = Theme.Window;
+        ForeColor = Theme.Text;
+        Font = Theme.Body;
+
+        int cardWidth = S(CardWidth);
+        int side = S(24);
+        foreach (Control field in new Control[] { _hotkey, _mode, _word }) field.Width = S(FieldWidth);
+        foreach (var number in new[] { _countdown, _idle, _hold, _cleaning }) number.Width = S(64);
+
+        _hotkey.BackColor = SystemColors.Window; // read-only boxes default to grey, which reads as disabled
 
         foreach (var (_, text) in Modes) _mode.Items.Add(text);
         _mode.SelectedIndex = Math.Max(0, Array.FindIndex(Modes, m => m.Mode == settings.DefaultLockMode));
@@ -68,109 +83,171 @@ internal sealed class SettingsForm : Form
         _cleaning.Value = settings.CleaningAutoEndSeconds;
         _startAtLogin.Checked = startAtLogin;
         _admin.Checked = settings.RunAsAdmin;
+
+        var locking = new Card(cardWidth);
+        Row(locking, "Lock hotkey", "Click the box, then press the keys you want.", _hotkey);
+        Row(locking, "What to lock", "What the hotkey, Lock now and auto-lock lock.", _mode);
+        Row(locking, "Countdown", "Time to step back before the lock starts. 0 locks at once.", _countdown, "seconds");
+        Row(locking, "Auto-lock", "Lock after this long without keyboard or mouse input. 0 turns it off.", _idle, "minutes");
+
+        var unlocking = new Card(cardWidth);
+        var wordText = Row(unlocking, "Unlock word", "Type this while locked. Letters, digits and spaces.", _word);
+        _wordWarning = Card.Note("", Theme.Warning, wordText.Controls[0].MaximumSize.Width);
+        wordText.Controls.Add(_wordWarning);
+        Row(unlocking, "Hold to unlock", "Hold the lock hotkey this long to unlock without typing. 0 turns it off.", _hold, "seconds");
+        Row(unlocking, "Typing dots", "Show a dot on the badge for each correct character typed.", _dots);
+        Row(unlocking, "Unlock word in the tray tooltip", "Hover over the tray icon to see the word, in case you forget it.", _tooltipWord);
+        Row(unlocking, "Protect Settings", "Ask for the unlock word to open Settings, pause the hotkey or exit.", _protect);
+
+        var badge = new Card(cardWidth);
+        Row(badge, "Locked badge", "Show a small badge while locked. The countdown always shows.", _badge);
+        Row(badge, "Sound", "Play a short chime when locking and unlocking.", _sound);
+
+        var cleaning = new Card(cardWidth);
+        Row(cleaning, "Ends after", "Cleaning mode ends by itself after this long. 0 means only when you unlock.", _cleaning, "seconds");
+
+        var startup = new Card(cardWidth);
+        Row(startup, "Start at sign-in", "Start ChildLock when I sign in to Windows.", _startAtLogin);
+        Row(startup, "Run as administrator", "So admin windows such as Task Manager are locked too. " + (Elevation.IsElevated
+            ? "ChildLock has admin rights now."
+            : "ChildLock has no admin rights now; turning this on restarts it and Windows asks once."), _admin);
+
+        var content = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Location = new Point(side, 0),
+            Padding = new Padding(0, 0, 0, S(8)),
+        };
+        (string Name, Card Card)[] groups =
+            [("Locking", locking), ("Unlocking", unlocking), ("Badge and sound", badge), ("Cleaning mode", cleaning), ("Startup", startup)];
+        foreach (var (name, card) in groups)
+        {
+            content.Controls.Add(new Label
+            {
+                Text = name, AutoSize = true, Font = Theme.Heading,
+                Margin = new Padding(S(2), card == locking ? 0 : S(18), 0, S(6)),
+            });
+            content.Controls.Add(card);
+        }
+        var scroll = new Panel { AutoScroll = true, Dock = DockStyle.Fill };
+        scroll.Controls.Add(content);
+        // The wheel scrolls the page; it only changes a number or the list once you have clicked into it.
+        foreach (Control field in new Control[] { _mode, _countdown, _idle, _hold, _cleaning })
+        {
+            field.MouseWheel += (_, e) =>
+            {
+                if (field.Focused) return;
+                ((HandledMouseEventArgs)e).Handled = true;
+                scroll.AutoScrollPosition = new Point(0, -scroll.AutoScrollPosition.Y - e.Delta);
+            };
+        }
+
+        _error = new Label
+        {
+            AutoSize = true, ForeColor = Theme.Error, Anchor = AnchorStyles.Left,
+            MaximumSize = new Size(cardWidth - S(230), 0), Margin = Padding.Empty,
+        };
         _word.TextChanged += (_, _) => UpdateWordWarning();
         _hotkey.ValueChanged += () => _error.Text = "";
         UpdateWordWarning();
 
-        var grid = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        var header = Header(side);
+        var footer = Footer(side);
+        // Docking works from the last control added to the first: the edges claim their space, the scroll area gets the rest.
+        Controls.Add(scroll);
+        Controls.Add(footer);
+        Controls.Add(header);
 
-        AddHeading(grid, "Locking", first: true);
-        AddRow(grid, "Lock hotkey", Stack(_hotkey, Hint("Click the box, then press the keys you want.")));
-        AddRow(grid, "Lock", _mode);
-        AddRow(grid, "Countdown", WithSuffix(_countdown, "seconds before locking (0 = instant)"));
-        AddRow(grid, "Auto-lock", WithSuffix(_idle, "minutes without input (0 = off)"));
+        // A comfortable height that fits small laptop screens; the cards scroll inside it.
+        int wanted = header.PreferredSize.Height + content.PreferredSize.Height + footer.PreferredSize.Height;
+        int room = Screen.FromPoint(Cursor.Position).WorkingArea.Height - S(72);
+        ClientSize = new Size(cardWidth + side * 2, Math.Min(Math.Min(wanted, room), S(MaxHeight)));
+    }
 
-        AddHeading(grid, "Unlocking");
-        AddRow(grid, "Unlock word", Stack(_word, Hint("Type this while locked. Letters, digits and spaces."), _wordWarning));
-        AddRow(grid, "Hold to unlock", WithSuffix(_hold, "seconds holding the lock hotkey (0 = off)"));
-        AddRow(grid, "", Stack(_dots, _tooltipWord, _protect));
+    int S(int logical) => LogicalToDeviceUnits(logical);
 
-        AddHeading(grid, "Badge and sound");
-        AddRow(grid, "", Stack(_badge, _sound));
+    /// <summary>Adds a row; with a <paramref name="unit"/> the control gets that word after it ("3 seconds").</summary>
+    FlowLayoutPanel Row(Card card, string title, string description, Control control, string? unit = null)
+    {
+        control.AccessibleName = title;
+        control.Font = Theme.Body;
+        if (unit is null) return card.AddRow(title, description, control);
 
-        AddHeading(grid, "Cleaning mode");
-        AddRow(grid, "Ends after", WithSuffix(_cleaning, "seconds (0 = only when you unlock)"));
+        // Every unit gets the same width, so the number boxes line up from row to row.
+        int unitWidth = TextRenderer.MeasureText("seconds", Theme.Body).Width + S(2);
+        var label = new Label
+        {
+            Text = unit, AutoSize = false, Size = new Size(unitWidth, control.PreferredSize.Height), TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = Theme.DimText, Margin = Padding.Empty,
+        };
+        control.Margin = new Padding(0, 0, S(8), 0);
+        var pair = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Size = new Size(control.Width + S(8) + unitWidth, control.PreferredSize.Height) };
+        pair.Controls.Add(control);
+        pair.Controls.Add(label);
+        return card.AddRow(title, description, pair);
+    }
 
-        AddHeading(grid, "Startup");
-        string adminState = Elevation.IsElevated
-            ? "ChildLock is running with admin rights now."
-            : "ChildLock is running without admin rights now. Ticking this restarts it and Windows asks once.";
-        AddRow(grid, "", Stack(_startAtLogin, _admin, Hint(adminState)));
+    Control Header(int side)
+    {
+        _logo.Image = IconFactory.Draw(S(40), locked: true, IconFactory.UnlockedColor);
+        _logo.Margin = new Padding(0, 0, S(14), 0);
+        _logo.Anchor = AnchorStyles.Left;
 
-        grid.Controls.Add(_error, 1, grid.RowCount++);
+        var names = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false, Anchor = AnchorStyles.Left, Margin = Padding.Empty };
+        names.Controls.Add(new Label { Text = "ChildLock", AutoSize = true, Font = Theme.Title, Margin = Padding.Empty });
+        names.Controls.Add(new Label { Text = "Keyboard and mouse lock", AutoSize = true, Font = Theme.Small, ForeColor = Theme.DimText, Margin = new Padding(S(2), 0, 0, 0) });
 
-        var save = new Button { Text = "Save", AutoSize = true, DialogResult = DialogResult.None };
-        var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
+        var header = new TableLayoutPanel
+        {
+            ColumnCount = 3, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Top,
+            Padding = new Padding(side, S(18), side, S(16)),
+        };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        header.Controls.Add(_logo, 0, 0);
+        header.Controls.Add(names, 1, 0);
+        header.Controls.Add(new Label
+        {
+            Text = $"Version {Application.ProductVersion}\nby Pure Tech", AutoSize = true, Font = Theme.Small, ForeColor = Theme.DimText,
+            TextAlign = ContentAlignment.MiddleRight, Anchor = AnchorStyles.Right, Margin = Padding.Empty,
+        }, 2, 0);
+        return header;
+    }
+
+    Control Footer(int side)
+    {
+        var save = new RoundButton("Save", primary: true) { DialogResult = DialogResult.None, Margin = new Padding(S(8), 0, 0, 0) };
+        var cancel = new RoundButton("Cancel") { DialogResult = DialogResult.Cancel, Margin = new Padding(S(8), 0, 0, 0) };
         save.Click += (_, _) => Save();
+        // The window isn't modal, so the button has to close it itself. Esc goes through the same click.
+        cancel.Click += (_, _) => Close();
         AcceptButton = save;
         CancelButton = cancel;
 
-        var version = new Label
-        {
-            Text = $"ChildLock {Application.ProductVersion} by Pure Tech",
-            AutoSize = true,
-            ForeColor = SystemColors.GrayText,
-            Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 8, 24, 0),
-        };
-        var footer = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, AutoSize = true, Margin = new Padding(0, 12, 0, 0) };
-        footer.Controls.Add(version);
-        footer.Controls.Add(save);
-        footer.Controls.Add(cancel);
-        grid.Controls.Add(footer, 0, grid.RowCount++);
-        grid.SetColumnSpan(footer, 2);
+        var buttons = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, AutoSize = true, WrapContents = false, Anchor = AnchorStyles.Right, Margin = Padding.Empty };
+        buttons.Controls.Add(save);
+        buttons.Controls.Add(cancel);
 
-        Controls.Add(grid);
+        var footer = new TableLayoutPanel
+        {
+            ColumnCount = 2, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Bottom,
+            Padding = new Padding(side, S(14), side, S(16)),
+        };
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        footer.Controls.Add(_error, 0, 0);
+        footer.Controls.Add(buttons, 1, 0);
+        return footer;
     }
 
     void UpdateWordWarning()
     {
         _wordWarning.Text = UnlockWord.Validate(_word.Text) is null ? UnlockWord.Weakness(_word.Text) ?? "" : "";
         _wordWarning.Visible = _wordWarning.Text.Length > 0;
-    }
-
-    static void AddHeading(TableLayoutPanel grid, string text, bool first = false)
-    {
-        var heading = new Label
-        {
-            Text = text,
-            AutoSize = true,
-            Font = HeadingFont,
-            Margin = new Padding(0, first ? 0 : 18, 0, 2),
-        };
-        int row = grid.RowCount++;
-        grid.Controls.Add(heading, 0, row);
-        grid.SetColumnSpan(heading, 2);
-    }
-
-    static void AddRow(TableLayoutPanel grid, string label, Control field)
-    {
-        int row = grid.RowCount++;
-        if (label.Length > 0)
-            grid.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top, Margin = new Padding(12, 10, 16, 0) }, 0, row);
-        field.Margin = new Padding(0, 6, 0, 0);
-        grid.Controls.Add(field, 1, row);
-    }
-
-    static Label Hint(string text) =>
-        new() { Text = text, AutoSize = true, ForeColor = SystemColors.GrayText, MaximumSize = new Size(380, 0) };
-
-    static Control Stack(params Control[] controls)
-    {
-        var stack = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false };
-        foreach (var control in controls) stack.Controls.Add(control);
-        return stack;
-    }
-
-    static Control WithSuffix(Control field, string suffix)
-    {
-        var row = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, AutoSize = true, WrapContents = false };
-        field.Margin = new Padding(0, 0, 6, 0);
-        row.Controls.Add(field);
-        row.Controls.Add(new Label { Text = suffix, AutoSize = true, Margin = new Padding(0, 4, 0, 0) });
-        return row;
     }
 
     void Save()
@@ -221,7 +298,11 @@ internal sealed class SettingsForm : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) Icon?.Dispose();
+        if (disposing)
+        {
+            Icon?.Dispose();
+            _logo.Image?.Dispose();
+        }
         base.Dispose(disposing);
     }
 }

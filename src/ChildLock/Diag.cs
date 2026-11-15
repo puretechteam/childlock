@@ -3,6 +3,7 @@ namespace ChildLock;
 /// <summary>Optional diagnostics log, turned on with --diag. Off by default.</summary>
 internal static class Diag
 {
+    static readonly Lock Gate = new(); // the tray and warm-up threads log too
     static string? _path;
 
     public static bool Enabled => _path is not null;
@@ -19,7 +20,8 @@ internal static class Diag
         if (_path is null) return;
         try
         {
-            File.AppendAllText(_path, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {message}{Environment.NewLine}");
+            lock (Gate)
+                File.AppendAllText(_path, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {message}{Environment.NewLine}");
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {

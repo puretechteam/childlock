@@ -123,6 +123,57 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool DestroyIcon(nint hIcon);
 
+    public const byte AC_SRC_ALPHA = 1;
+    public const uint ULW_ALPHA = 2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT
+    {
+        public int x;
+        public int y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SIZE
+    {
+        public int cx;
+        public int cy;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct BLENDFUNCTION
+    {
+        public byte BlendOp;
+        public byte BlendFlags;
+        public byte SourceConstantAlpha;
+        public byte AlphaFormat;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool UpdateLayeredWindow(nint hWnd, nint hdcDst, ref POINT pptDst, ref SIZE psize, nint hdcSrc,
+        ref POINT pptSrc, uint crKey, ref BLENDFUNCTION pblend, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    public static extern nint GetDC(nint hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern int ReleaseDC(nint hWnd, nint hDC);
+
+    [DllImport("gdi32.dll")]
+    public static extern nint CreateCompatibleDC(nint hdc);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DeleteDC(nint hdc);
+
+    [DllImport("gdi32.dll")]
+    public static extern nint SelectObject(nint hdc, nint h);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DeleteObject(nint ho);
+
     public const uint MSGFLT_ALLOW = 1;
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

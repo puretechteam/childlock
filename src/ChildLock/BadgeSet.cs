@@ -11,9 +11,22 @@ internal sealed class BadgeSet : IDisposable
     double _hold;
     bool _holding;
 
+    public static BadgeContent Countdown(int seconds) =>
+        new($"Locking in {seconds}...", "Press Esc to cancel", BadgeStyle.Countdown);
+
+    public static BadgeContent Locked(LockMode mode) => new(mode switch
+    {
+        LockMode.KeyboardOnly => "Keyboard locked",
+        LockMode.MouseOnly => "Mouse locked",
+        _ => "Locked",
+    }, "", BadgeStyle.Locked);
+
+    public static BadgeContent Holding(double progress) =>
+        new("Keep holding to unlock...", "", BadgeStyle.Holding, Progress: Math.Max(0.02, progress));
+
     public void ShowCountdown(int seconds)
     {
-        _base = new BadgeContent($"Locking in {seconds}...", "Press Esc to cancel", BadgeStyle.Countdown);
+        _base = Countdown(seconds);
         _dots = 0;
         _holding = false;
         Render();
@@ -22,13 +35,7 @@ internal sealed class BadgeSet : IDisposable
     /// <param name="visible">False shows nothing until the hotkey is held or the word typed (if dots are on).</param>
     public void ShowLocked(LockMode mode, bool visible)
     {
-        string title = mode switch
-        {
-            LockMode.KeyboardOnly => "Keyboard locked",
-            LockMode.MouseOnly => "Mouse locked",
-            _ => "Locked",
-        };
-        _base = visible ? new BadgeContent(title, "", BadgeStyle.Locked) : null;
+        _base = visible ? Locked(mode) : null;
         _dots = 0;
         _holding = false;
         Render();
@@ -56,7 +63,7 @@ internal sealed class BadgeSet : IDisposable
         _base = null;
         _dots = 0;
         _holding = false;
-        foreach (var badge in _badges) badge.Hide();
+        foreach (var badge in _badges) badge.FadeOut();
     }
 
     public void EnsureTopmost()
@@ -74,14 +81,14 @@ internal sealed class BadgeSet : IDisposable
     void Render()
     {
         BadgeContent? content = _holding
-            ? new BadgeContent("Keep holding to unlock...", "", BadgeStyle.Holding, Progress: Math.Max(0.02, _hold))
+            ? Holding(_hold)
             : _dots > 0
-                ? (_base ?? new BadgeContent("Locked", "", BadgeStyle.Locked)) with { Dots = _dots }
+                ? (_base ?? Locked(LockMode.Full)) with { Dots = _dots }
                 : _base;
 
         if (content is null)
         {
-            foreach (var badge in _badges) badge.Hide();
+            foreach (var badge in _badges) badge.FadeOut();
             return;
         }
         if (_badges.Count == 0)

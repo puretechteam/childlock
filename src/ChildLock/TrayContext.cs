@@ -12,6 +12,7 @@ internal sealed class TrayContext : ApplicationContext
 {
     const int RehookEveryTicks = 20; // 20 x 250 ms = 5 s
     const int SecureDesktopMissesToUnlock = 2;
+    const int HeldKeyWaitMs = 10_000; // longest the hooks stay after an unlock, waiting for held keys to come up
 
     /// <summary>What the tray menu shows; read on the tray's own thread, so it is replaced, never changed.</summary>
     sealed record MenuState(LockState State, bool Paused, string? Accelerator);
@@ -32,6 +33,7 @@ internal sealed class TrayContext : ApplicationContext
     readonly System.Windows.Forms.Timer _watchdogTimer = new() { Interval = 250 };
     readonly System.Windows.Forms.Timer _idleTimer = new() { Interval = 5000 };
     readonly System.Windows.Forms.Timer _holdTimer = new() { Interval = 50 };
+    readonly System.Windows.Forms.Timer _releaseTimer = new() { Interval = 50 };
 
     Settings _settings;
     SettingsForm? _settingsForm;
@@ -43,6 +45,7 @@ internal sealed class TrayContext : ApplicationContext
     bool _exiting;
     int _watchdogTicks;
     int _secureDesktopMisses;
+    long _releaseDeadline;
 
     public TrayContext(AppOptions options, bool elevationDeclined)
     {
@@ -53,6 +56,7 @@ internal sealed class TrayContext : ApplicationContext
         _gate = new InputGate(_machine, _settings.UnlockWord, SystemState.HeldInput);
         ApplyGateSettings();
         _hooks = new InputHooks(_gate);
+        InputHooks.Warm();
 
         // State changes can happen inside a hook callback; defer the UI work so the callback returns fast.
         _machine.StateChanged += (state, reason) => Post(() => OnStateChanged(state, reason));
@@ -68,12 +72,15 @@ internal sealed class TrayContext : ApplicationContext
         _watchdogTimer.Tick += (_, _) => Watchdog();
         _idleTimer.Tick += (_, _) => CheckIdle();
         _holdTimer.Tick += (_, _) => PollHold();
+        _releaseTimer.Tick += (_, _) => ReleaseTick();
         SystemEvents.SessionSwitch += OnSessionSwitch;
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
         RegisterHotkey();
         _menu = SnapshotMenu();
-        _tray = new TrayIcon(_readyIcon, TooltipText(), BuildMenu(), MenuThemeFor(options.Theme));
+        // A copy run with its own settings file keeps its toast icon beside that file, never in the real folder.
+        _tray = new TrayIcon(_readyIcon, TooltipText(), BuildMenu(), MenuThemeFor(options.Theme),
+            options.CustomSettingsPath ? Path.GetDirectoryName(options.SettingsPath) : null);
         ApplyIdleTimer();
         UpdateTray();
         Diag.Log($"started settings={options.SettingsPath} hotkey={_settings.LockHotkey} registered={_hotkeyRegistered} " +
@@ -157,10 +164,42 @@ internal sealed class TrayContext : ApplicationContext
         _countdownTimer.Stop();
         _watchdogTimer.Stop();
         _holdTimer.Stop();
-        _hooks.Uninstall();
+        ReleaseHooks();
         SystemState.KeepAwake(false);
         _badges.Hide();
         _cleaning.Hide();
+    }
+
+    /// <summary>
+    /// Removes the hooks, but not while a key that was down at the unlock is still held (the hotkey after
+    /// holding it, or the last letter of the word): the gate keeps swallowing that key until it is released,
+    /// so it never repeats into the app that has focus. Everything else passes through meanwhile.
+    /// </summary>
+    void ReleaseHooks()
+    {
+        if (_exiting || !_gate.Swallowing)
+        {
+            _releaseTimer.Stop();
+            _hooks.Uninstall();
+            return;
+        }
+        _releaseDeadline = Environment.TickCount64 + HeldKeyWaitMs;
+        _releaseTimer.Start();
+    }
+
+    /// <summary>Every 50 ms after an unlock, until the held keys are up or the wait runs out.</summary>
+    void ReleaseTick()
+    {
+        // A new countdown or lock has taken the hooks over.
+        if (_machine.State != LockState.Unlocked)
+        {
+            _releaseTimer.Stop();
+            return;
+        }
+        if (_gate.Swallowing && Environment.TickCount64 < _releaseDeadline) return;
+        _releaseTimer.Stop();
+        _gate.StopSwallowing();
+        _hooks.Uninstall();
     }
 
     string CleaningHint() => _settings.UnlockHoldSeconds > 0
@@ -502,6 +541,7 @@ internal sealed class TrayContext : ApplicationContext
         _watchdogTimer.Dispose();
         _idleTimer.Dispose();
         _holdTimer.Dispose();
+        _releaseTimer.Dispose();
         _hotkeyWindow.Dispose();
         _settingsForm?.Close();
         _badges.Dispose();

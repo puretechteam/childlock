@@ -2,12 +2,16 @@
 bin/
 obj/
 out/
+dist/
+build/
 publish/
 artifacts/
 TestResults/
+*.binlog
 
 # IDE / OS
 .vs/
+.vscode/
 .idea/
 *.user
 *.suo
@@ -17,6 +21,10 @@ Thumbs.db
 # Logs and caches
 *.log
 .cache/
+.pytest_cache/
+__pycache__/
+.venv/
+node_modules/
 
 # Secrets
 .env*

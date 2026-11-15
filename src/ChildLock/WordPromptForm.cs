@@ -1,4 +1,5 @@
 using ChildLock.Core;
+using ChildLock.Ui;
 
 namespace ChildLock;
 
@@ -10,7 +11,7 @@ internal sealed class WordPromptForm : Form
     readonly string _word;
     readonly TextBox _input = new() { UseSystemPasswordChar = true, MaxLength = UnlockWord.MaxLength + 16 };
     // Always laid out (empty until a wrong try) so the window doesn't jump when it appears.
-    readonly Label _error = new() { AutoSize = true, ForeColor = Color.FromArgb(220, 60, 50) };
+    readonly Label _error = new() { AutoSize = true, ForeColor = Theme.Error };
     readonly PictureBox _icon = new() { SizeMode = PictureBoxSizeMode.AutoSize };
 
     public WordPromptForm(string word, string action)
@@ -28,6 +29,9 @@ internal sealed class WordPromptForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         Padding = new Padding(LogicalToDeviceUnits(20));
         TopMost = true;
+        BackColor = Theme.Window;
+        ForeColor = Theme.Text;
+        Font = Theme.Body;
 
         int textWidth = LogicalToDeviceUnits(300);
         _icon.Image = IconFactory.Draw(LogicalToDeviceUnits(40), locked: true);
@@ -37,8 +41,8 @@ internal sealed class WordPromptForm : Form
         _error.Margin = new Padding(0, LogicalToDeviceUnits(6), 0, 0);
         _error.MaximumSize = new Size(textWidth, 0);
 
-        var ok = new Button { Text = "OK", AutoSize = true, MinimumSize = new Size(LogicalToDeviceUnits(84), 0) };
-        var cancel = new Button { Text = "Cancel", AutoSize = true, MinimumSize = ok.MinimumSize, DialogResult = DialogResult.Cancel };
+        var ok = new RoundButton("OK", primary: true);
+        var cancel = new RoundButton("Cancel") { DialogResult = DialogResult.Cancel };
         ok.Click += (_, _) => Check();
         AcceptButton = ok;
         CancelButton = cancel;
@@ -62,7 +66,7 @@ internal sealed class WordPromptForm : Form
         {
             Text = $"Type the unlock word to {action}.",
             AutoSize = true,
-            ForeColor = SystemColors.GrayText,
+            ForeColor = Theme.DimText,
             MaximumSize = new Size(textWidth, 0),
             Margin = new Padding(0, LogicalToDeviceUnits(4), 0, 0),
         };

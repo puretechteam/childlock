@@ -25,13 +25,14 @@ internal sealed class TrayIcon : IDisposable
 
     static TrayIcon() => Tray.Log += (message, e) => Diag.Log("tray: " + message + (e is null ? "" : " " + e.Message));
 
-    public TrayIcon(Rgba icon, string tooltip, Menu menu, MenuTheme theme)
+    /// <param name="iconFolder">Where the toast icon file is kept; null for the usual place.</param>
+    public TrayIcon(Rgba icon, string tooltip, Menu menu, MenuTheme theme, string? iconFolder = null)
     {
         _tray = new Tray(icon, Clip(tooltip), menu)
         {
             AppId = AppId,
             AppName = "ChildLock",
-            AppIcon = IconFactory.AppIconPath(),
+            AppIcon = IconFactory.AppIconPath(iconFolder),
             Theme = theme,
             OnClick = _ => { }, // a left click does nothing; the menu is on the right button
         };

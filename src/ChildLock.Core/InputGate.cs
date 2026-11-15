@@ -57,6 +57,15 @@ public sealed class InputGate
     public double HoldProgress =>
         HoldCounts ? Math.Min(1, (double)_chord.HeldFor(_clock()) / _holdMs) : 0;
 
+    /// <summary>
+    /// True after an unlock while a key that was down at that moment is still held. Its events are blocked
+    /// until it is released, so the hooks have to stay installed that long.
+    /// </summary>
+    public bool Swallowing => Array.IndexOf(_swallow, true) >= 0;
+
+    /// <summary>Stop waiting for those keys, for when a release happened where the hook couldn't see it.</summary>
+    public void StopSwallowing() => Array.Clear(_swallow);
+
     bool HoldCounts =>
         _holdMs > 0 && _chord.Holding && _machine.State == LockState.Locked && _machine.Mode.BlocksKeyboard();
 

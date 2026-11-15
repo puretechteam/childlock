@@ -1,3 +1,4 @@
+using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using static ChildLock.Native.NativeMethods;
 
@@ -77,6 +78,7 @@ internal sealed class CleaningOverlay : IDisposable
         long elapsed = Environment.TickCount64 - _startedAt;
         double note = elapsed < NoteBrightMs ? 1 : Math.Max(NoteDim, 1 - (elapsed - NoteBrightMs) / (double)NoteFadeMs);
         double opacity = 1;
+        double timeLeft = 0;
         string remaining = "";
         if (_autoEndMs > 0)
         {
@@ -89,9 +91,55 @@ internal sealed class CleaningOverlay : IDisposable
             }
             long seconds = (left + 999) / 1000;
             remaining = $"Ends by itself in {seconds / 60}:{seconds % 60:00}";
+            timeLeft = left / (double)_autoEndMs;
             if (left < FadeBackMs) opacity = left / (double)FadeBackMs;
         }
-        foreach (var form in _forms) form.ShowState(_hint, remaining, note, opacity);
+        foreach (var form in _forms) form.ShowState(_hint, remaining, note, timeLeft, opacity);
+    }
+
+    /// <summary>The note in the middle of the main screen: a padlock in a ring that empties as time runs out, and how to finish.</summary>
+    /// <param name="s">Screen scale: 1 at 100%.</param>
+    /// <param name="note">Brightness of the note, 1 down to a faint grey.</param>
+    /// <param name="timeLeft">Share of the auto-end time still left, 0 when there is none.</param>
+    public static void PaintNote(Graphics g, Size screen, float s, string hint, string remaining, double note, double timeLeft)
+    {
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+        var bright = Grey(232 * note);
+        var dim = Grey(160 * note);
+        using var titleFont = new Font("Segoe UI Semibold", 27f * s, FontStyle.Regular, GraphicsUnit.Pixel);
+        using var lineFont = new Font("Segoe UI", 15f * s, FontStyle.Regular, GraphicsUnit.Pixel);
+        using var titleBrush = new SolidBrush(bright);
+        using var lineBrush = new SolidBrush(dim);
+        using var center = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
+
+        string[] lines = remaining.Length > 0 ? [hint, remaining] : [hint];
+        float ring = 96 * s;
+        float gap = 26 * s;
+        var titleSize = g.MeasureString("Cleaning mode", titleFont);
+        float lineHeight = lineFont.GetHeight(g) * 1.35f;
+        float y = (screen.Height - (ring + gap + titleSize.Height + lineHeight * lines.Length)) / 2;
+
+        var circle = new RectangleF((screen.Width - ring) / 2, y, ring, ring);
+        using (var track = new Pen(Grey(52 * note), 3 * s))
+            g.DrawEllipse(track, circle);
+        if (timeLeft > 0)
+        {
+            using var arc = new Pen(bright, 3 * s) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+            g.DrawArc(arc, circle, -90, (float)(360 * Math.Min(1, timeLeft)));
+        }
+        IconFactory.DrawPadlock(g, RectangleF.Inflate(circle, -20 * s, -20 * s), bright, open: false, bold: false, keyhole: Color.Black);
+        y += ring + gap;
+
+        g.DrawString("Cleaning mode", titleFont, titleBrush, new RectangleF(0, y, screen.Width, titleSize.Height), center);
+        y += titleSize.Height;
+        foreach (string line in lines)
+        {
+            g.DrawString(line, lineFont, lineBrush, new RectangleF(0, y, screen.Width, lineHeight), center);
+            y += lineHeight;
+        }
+
+        static Color Grey(double level) => Color.FromArgb((int)level, (int)level, (int)level);
     }
 
     public void Dispose()
@@ -107,6 +155,7 @@ internal sealed class CleaningOverlay : IDisposable
         string _hint = "";
         string _remaining = "";
         double _note = 1;
+        double _timeLeft;
 
         public CleaningForm(Screen screen, bool showNote)
         {
@@ -134,13 +183,15 @@ internal sealed class CleaningOverlay : IDisposable
             }
         }
 
-        public void ShowState(string hint, string remaining, double note, double opacity)
+        public void ShowState(string hint, string remaining, double note, double timeLeft, double opacity)
         {
             if (Math.Abs(Opacity - opacity) > 0.005) Opacity = opacity;
-            if (!_showNote || (hint == _hint && remaining == _remaining && Math.Abs(note - _note) < 0.005)) return;
+            // The ring only needs a repaint when it has moved by a visible amount (a few times a second).
+            if (!_showNote || (hint == _hint && remaining == _remaining && Math.Abs(note - _note) < 0.005 && Math.Abs(timeLeft - _timeLeft) < 0.004)) return;
             _hint = hint;
             _remaining = remaining;
             _note = note;
+            _timeLeft = timeLeft;
             Invalidate();
         }
 
@@ -158,30 +209,7 @@ internal sealed class CleaningOverlay : IDisposable
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            if (!_showNote) return;
-            var g = e.Graphics;
-            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-            int bright = (int)(230 * _note);
-            int dim = (int)(160 * _note);
-            using var titleFont = new Font("Segoe UI Semibold", 20f, FontStyle.Regular, GraphicsUnit.Point);
-            using var lineFont = new Font("Segoe UI", 11f, FontStyle.Regular, GraphicsUnit.Point);
-            using var titleBrush = new SolidBrush(Color.FromArgb(bright, bright, bright));
-            using var lineBrush = new SolidBrush(Color.FromArgb(dim, dim, dim));
-            using var center = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
-
-            string[] lines = _remaining.Length > 0 ? [_hint, _remaining] : [_hint];
-            var titleSize = g.MeasureString("Cleaning mode", titleFont);
-            float lineHeight = lineFont.GetHeight(g) * 1.3f;
-            float total = titleSize.Height + lineHeight * lines.Length;
-            float y = (ClientSize.Height - total) / 2;
-            var column = new RectangleF(0, y, ClientSize.Width, titleSize.Height);
-            g.DrawString("Cleaning mode", titleFont, titleBrush, column, center);
-            y += titleSize.Height;
-            foreach (string line in lines)
-            {
-                g.DrawString(line, lineFont, lineBrush, new RectangleF(0, y, ClientSize.Width, lineHeight), center);
-                y += lineHeight;
-            }
+            if (_showNote) PaintNote(e.Graphics, ClientSize, DeviceDpi / 96f, _hint, _remaining, _note, _timeLeft);
         }
     }
 }

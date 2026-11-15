@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <b><a href="https://github.com/puretechteam/childlock/releases/latest">Download ChildLock.exe</a></b> (about 390 KB, no installer)
+  <b><a href="https://github.com/puretechteam/childlock/releases/latest">Download ChildLock.exe</a></b> (about 410 KB, no installer)
 </p>
 
 # ChildLock
@@ -30,13 +30,13 @@ Made for:
 - **Or just half of it:** lock only the keyboard (let them click around a game) or only the mouse (so a video can't be paused by a stray click while you type).
 - **Unlock with a secret word or phrase:** just type it while locked (default `unlock`, but pick your own). Spaces are allowed, so `purple giraffe` works. Random key mashing won't hit a decent word: in a test of 1,000,000 random key presses `unlock` never unlocked.
 - **Or hold the hotkey:** hold the lock hotkey (Ctrl+Alt+L) for 3 seconds to unlock, without typing anything.
-- **Cleaning mode:** every screen goes black so smudges and dust show up, and the keyboard and mouse are locked while you wipe them. It ends by itself after a minute, or when you unlock.
+- **Cleaning mode:** every screen goes black so smudges and dust show up, and the keyboard and mouse are locked while you wipe them. A ring around the padlock shows the time left: it ends by itself after a minute, or when you unlock.
 - **Screen stays as it is:** a small "Locked" badge appears in the top-right corner of every monitor and clicks pass straight through it (or hide it completely). The PC is kept awake while locked, so a video doesn't get cut off by sleep or the screensaver.
 - **Countdown before locking:** 3 seconds by default (0 to 10), so you can step back or start the video. Press Esc or the hotkey again to cancel.
 - **Three ways to lock:** a hotkey (default **Ctrl+Alt+L**), the tray menu, or automatically after a set number of idle minutes (off by default).
 - **Always a way out:** pressing Ctrl+Alt+Del, or Windows locking (Win+L), unlocks ChildLock too.
 - **Keep older kids out of Settings:** optionally ask for the unlock word before Settings, pausing or exiting.
-- **Small and light:** one exe of about 390 KB, no installer, and no measurable CPU when idle.
+- **Small and light:** one exe of about 410 KB, no installer, and no measurable CPU when idle.
 - **Follows your Windows light or dark theme**, tray menu included.
 
 ## Requirements
@@ -49,15 +49,22 @@ Made for:
 1. Download `ChildLock.exe` from the [latest release](https://github.com/puretechteam/childlock/releases/latest) and put it anywhere you like, for example `C:\Tools\ChildLock`.
 2. Run it and click **Yes** at the Windows admin prompt. With admin rights ChildLock can also block input aimed at admin windows such as Task Manager; without them, Windows would let keys through to those windows. If you click **No**, ChildLock still runs (and stops asking); you can turn admin rights back on in Settings.
 3. A padlock appears in the notification area. On Windows 11 new icons start hidden behind the **^** arrow; drag it onto the taskbar to keep it visible.
-4. Optional: open **Settings** and tick **Start ChildLock when I sign in**. With admin rights this creates a Task Scheduler task, so it starts with admin rights at sign-in without asking every time. Without admin rights it uses the normal per-user startup entry instead.
+4. Optional: open **Settings** and turn on **Start at sign-in**. With admin rights this creates a Task Scheduler task, so it starts with admin rights at sign-in without asking every time. Without admin rights it uses the normal per-user startup entry instead.
 
 ChildLock shows its notifications as Windows toasts, some with buttons such as **Open Settings**. For Windows to show them under ChildLock's name, it adds a "ChildLock" shortcut to your Start menu the first time it shows one. `ChildLock.exe --uninstall` removes it again.
 
 ## Using it
 
-![Countdown badge](docs/images/badge-countdown.png) ![Locked badge](docs/images/badge-locked.png) ![Locked badge with typing dots](docs/images/badge-dots.png) ![Keyboard locked badge](docs/images/badge-keyboard.png) ![Mouse locked badge](docs/images/badge-mouse.png)
+<p>
+  <img src="docs/images/badge-countdown.png" alt="Countdown badge" height="70">
+  <img src="docs/images/badge-locked.png" alt="Locked badge" height="54">
+  <img src="docs/images/badge-dots.png" alt="Locked badge with typing dots" height="66">
+  <img src="docs/images/badge-keyboard.png" alt="Keyboard locked badge" height="54">
+  <img src="docs/images/badge-mouse.png" alt="Mouse locked badge" height="54">
+  <img src="docs/images/badge-holding.png" alt="Badge while holding the hotkey to unlock" height="54">
+</p>
 
-The badge counts down, then shows what's locked. The dots for each correct character of the unlock word are optional.
+The badge counts down, then shows what's locked, and fades away when you unlock. The dots for each correct character of the unlock word are optional, and the last one shows while you hold the hotkey to unlock.
 
 | To | Do this |
 |---|---|
@@ -84,6 +91,14 @@ Hover over the padlock to see the current hotkey and unlock word, in case you fo
 
 While locked, the menu only shows that ChildLock is locked; nothing in it can be clicked.
 
+### Cleaning mode
+
+<p>
+  <img src="docs/images/cleaning.png" alt="Cleaning mode: a black screen with a padlock in a ring, how to finish, and the time left" width="70%">
+</p>
+
+Every screen goes black and everything is locked. The note dims to a faint grey after a few seconds so it doesn't hide smudges, and the ring empties as the time runs out.
+
 ### Settings
 
 <p>
@@ -95,25 +110,25 @@ While locked, the menu only shows that ChildLock is locked; nothing in it can be
 |---|---|---|
 | **Locking** | | |
 | Lock hotkey | Ctrl+Alt+L | Click the box and press the keys. Must include Ctrl, Alt or Win. If another app already uses the combination, ChildLock tells you |
-| Lock | Keyboard and mouse | What the hotkey, **Lock now** and auto-lock lock: keyboard and mouse, keyboard only, or mouse only |
+| What to lock | Keyboard and mouse | What the hotkey, **Lock now** and auto-lock lock: keyboard and mouse, keyboard only, or mouse only |
 | Countdown | 3 seconds | 0 to 10. 0 locks instantly |
 | Auto-lock | 0 (off) | Lock after this many minutes with no keyboard or mouse input (up to 240). Goes through the countdown like any other lock |
 | **Unlocking** | | |
 | Unlock word | `unlock` | Up to 64 letters, digits and spaces, not case-sensitive. Number-pad digits count too. Short, common or sequential words (`abc`, `1234`, `password`) are allowed, but Settings warns you that they are easy to hit or guess |
 | Hold to unlock | 3 seconds | Hold the lock hotkey this long to unlock (2 to 10, 0 turns it off). Only the exact hotkey counts, and pressing any other key while holding starts over |
-| Show a dot for each correct character | Off | Small dots on the badge while you type the word, so you can see it's being picked up |
-| Show the unlock word in the tray tooltip | On | Turn off if an older kid could read it |
-| Ask for the unlock word to open Settings, pause or exit | Off | Stops someone who doesn't know the word from turning ChildLock off from the tray |
+| Typing dots | Off | Small dots on the badge while you type the word, so you can see it's being picked up |
+| Unlock word in the tray tooltip | On | Hover over the tray icon to see the word. Turn off if an older kid could read it |
+| Protect Settings | Off | Ask for the unlock word to open Settings, pause the hotkey or exit. Stops someone who doesn't know the word from turning ChildLock off from the tray |
 | **Badge and sound** | | |
-| Show the "Locked" badge | On | The countdown badge always shows, so you can still cancel |
-| Play a sound | Off | A short chime when locking and unlocking |
+| Locked badge | On | The countdown badge always shows, so you can still cancel |
+| Sound | Off | A short chime when locking and unlocking |
 | **Cleaning mode** | | |
 | Ends after | 60 seconds | 0 to 600. 0 keeps the screens black until you unlock. The screens fade back in over the last few seconds |
 | **Startup** | | |
-| Start ChildLock when I sign in | Off | Adds or removes the sign-in entry. If you move the exe, ChildLock updates it the next time it runs |
+| Start at sign-in | Off | Adds or removes the sign-in entry. If you move the exe, ChildLock updates it the next time it runs |
 | Run as administrator | On | Ask for admin rights at start, so admin windows are locked too. Declining the prompt turns this off |
 
-Settings are saved in `%APPDATA%\ChildLock\settings.json`. The unlock word is stored there as plain text; it's a kid-proofing word, not a password.
+Changes apply when you press **Save**; **Cancel** or Esc discards them. Settings are saved in `%APPDATA%\ChildLock\settings.json`. The unlock word is stored there as plain text; it's a kid-proofing word, not a password.
 
 ## What it can't block
 
@@ -162,7 +177,9 @@ In an existing clone, run `git submodule update --init` first.
 
 Debug builds run as the normal user, so development needs no admin prompt. Release builds ask for admin rights at start. Override either way with `-p:ChildLockElevate=true` or `false`.
 
-Every push is built and unit-tested on Windows by GitHub Actions. Pushing a tag such as `v0.2.0` (matching `<Version>` in `Directory.Build.props`) publishes `ChildLock.exe` as a GitHub release with the matching CHANGELOG section as its notes.
+Every push is built and unit-tested on Windows by GitHub Actions. Pushing a tag such as `v0.3.0` (matching `<Version>` in `Directory.Build.props`) publishes `ChildLock.exe` as a GitHub release with the matching CHANGELOG section as its notes.
+
+The pictures in this README come from the app's own drawing code: `ChildLock.exe --export-shots <folder>` writes the badge, cleaning screen and icon images, and `--preview settings` (or `prompt`) opens just that window with default settings.
 
 The test suite includes integration tests that start the real `ChildLock.exe` and lock this PC's keyboard and mouse for a few seconds at a time, using synthesized input. They prove that nothing leaks through while locked. Skip them with:
 

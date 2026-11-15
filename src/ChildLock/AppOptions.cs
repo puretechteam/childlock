@@ -11,6 +11,12 @@ internal sealed record AppOptions
     public bool CustomSettingsPath { get; init; }
     public string? DiagPath { get; init; }
     public string? ExportIconPath { get; init; }
+
+    /// <summary>Dev time: write the badge, cleaning screen and icon pictures to this folder, then exit.</summary>
+    public string? ExportShotsPath { get; init; }
+
+    /// <summary>Dev time: show just this window ("settings" or "prompt") with default settings, then exit.</summary>
+    public string? Preview { get; init; }
     public SystemColorMode Theme { get; init; } = SystemColorMode.System;
 
     /// <summary>Don't ask for admin rights, even if the settings say to.</summary>
@@ -70,6 +76,12 @@ internal sealed record AppOptions
                     break;
                 case "--export-icon" when Next() is { } path:
                     options = options with { ExportIconPath = path };
+                    break;
+                case "--export-shots" when Next() is { } path:
+                    options = options with { ExportShotsPath = path };
+                    break;
+                case "--preview" when Next() is { } window:
+                    options = options with { Preview = window.ToLowerInvariant() };
                     break;
             }
         }

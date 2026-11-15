@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using ChildLock.Core;
 using static ChildLock.Native.NativeMethods;
 
@@ -55,6 +57,31 @@ internal sealed class InputHooks : IDisposable
     }
 
     public bool Installed => _keyboardHook != 0;
+
+    /// <summary>
+    /// Compiles the code the callbacks run, on a background thread shortly after start (not during it, so
+    /// startup pays nothing). Otherwise the first keys of a lock pay for that inside the hook, which showed
+    /// up as callbacks of a millisecond or more.
+    /// </summary>
+    public static void Warm() => Task.Delay(1500).ContinueWith(_ =>
+    {
+        const BindingFlags all = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+        Type[] types =
+        [
+            typeof(InputHooks), typeof(HookStats), typeof(InputGate), typeof(LockStateMachine), typeof(UnlockWordMatcher),
+            typeof(HeldKeyTracker), typeof(HotkeyChordTracker), typeof(Hotkey),
+        ];
+        long start = Stopwatch.GetTimestamp();
+        foreach (var type in types.SelectMany(t => t.GetNestedTypes(all).Prepend(t)))
+        {
+            foreach (var method in type.GetMethods(all))
+            {
+                if (method.IsAbstract || method.ContainsGenericParameters) continue;
+                RuntimeHelpers.PrepareMethod(method.MethodHandle);
+            }
+        }
+        Diag.Log($"hook code compiled in {Stopwatch.GetElapsedTime(start).TotalMilliseconds:F0} ms");
+    });
 
     public void Install()
     {

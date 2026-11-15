@@ -19,6 +19,18 @@ internal static class Program
         ApplicationConfiguration.Initialize();
         Application.SetColorMode(options.Theme);
 
+        if (options.ExportShotsPath is { } shotsPath)
+        {
+            Previews.Export(shotsPath);
+            return 0;
+        }
+        if (options.Preview is { } preview)
+        {
+            if (Previews.Window(preview) is not { } window) return 1;
+            Application.Run(window);
+            return 0;
+        }
+
         if (options.Uninstall) return Uninstall.Run(options);
 
         // A restart with admin rights waits for the copy it replaces, so the two never hold the hotkey together.

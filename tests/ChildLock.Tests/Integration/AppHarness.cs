@@ -51,6 +51,8 @@ internal sealed class AppHarness : IDisposable
             string started = WaitFor(" started settings=");
             if (!started.Contains("registered=True"))
                 throw new InvalidOperationException("ChildLock could not register the test hotkey: " + started);
+            // The app compiles its hook code shortly after start. Real locks come later than that, so test the same state.
+            WaitFor("hook code compiled");
         }
         catch
         {

@@ -4,6 +4,25 @@ All notable changes to ChildLock are listed here. Versions follow [Semantic Vers
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-15
+
+New look:
+
+- Settings is rebuilt in the Windows 11 style: a header, one rounded card per group, on/off switches, and a Save button in the accent color. It follows light and dark, fits small laptop screens (the cards scroll), and the mouse wheel scrolls the page instead of changing a number box you happen to point at.
+- New icon: a white padlock on a rounded tile, blue when ready, red when locked and grey when paused, with an open shackle when unlocked. It is drawn for each size, so it stays clear in the tray, where the old glyph washed out at 16 px.
+- The badge has smooth corners, a thin light edge that keeps it readable on dark video, and a soft shadow. It fades in, and fades out when you unlock.
+- Cleaning mode shows a padlock inside a ring that empties as the time runs out.
+- The unlock word prompt matches the new look.
+
+Fixed:
+
+- Keys still held when ChildLock unlocks no longer reach the app that has focus. After holding the hotkey to unlock, or while the last letter of the word was still down, 0.2.0 let those keys through as soon as it unlocked; now they are swallowed until you let go. In the test that holds the hotkey, 4 key events leaked before and 0 do now.
+- **Cancel** and Esc now close Settings. In 0.2.0 only Save or the X did.
+- The first keys of a lock no longer stall for a millisecond or more. The slowest input callback went from 0.6 to 1.6 ms down to 0.26 to 0.38 ms, and the average from about 25 to about 10 microseconds.
+- A copy started with `--settings` keeps its toast icon beside that settings file instead of in your real ChildLock folder.
+
+Numbers (0.2.0 to 0.3.0, same PC, measured back to back): exe 392,681 to 421,353 bytes (+7%), start unchanged (276 to 300 ms against 271 to 286 ms), private memory 11.3 to 12.1 MB, still no measurable CPU when idle. All 152 tests pass, 9 of them against the real exe with 0 key or mouse events leaking while locked.
+
 ## 0.2.0 - 2026-10-31
 
 New:
